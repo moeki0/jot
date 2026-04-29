@@ -364,7 +364,7 @@ export function App() {
       requestAnimationFrame(() => {
         const composer = document.querySelector(".composer") as HTMLElement | null;
         if (composer) {
-          const offset = composer.getBoundingClientRect().top + window.scrollY - 40;
+          const offset = composer.getBoundingClientRect().top + window.scrollY - 16;
           window.scrollTo({ top: offset, behavior: "smooth" });
         }
       });
