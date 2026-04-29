@@ -2,7 +2,8 @@ import { join } from "node:path";
 
 type GateAction = {
   label: string;
-  decision: "allow" | "deny";
+  value: string;
+  color?: string;
   // Freeform extra payload (e.g. remember, scope, reason). Sent back to caller verbatim.
   [key: string]: unknown;
 };
@@ -23,9 +24,9 @@ type Event =
   | { type: "fragment"; fragment: Fragment }
   | { type: "ephemeral"; channel: string; key: string; markdown: string | null; animation?: string }
   | { type: "awaiting"; id: number; markdown?: string; actions?: GateAction[] }
-  | { type: "decided"; id: number; decision: "allow" | "deny"; message?: string };
+  | { type: "decided"; id: number; value: string; message?: string };
 
-type DecisionPayload = { decision: "allow" | "deny"; message?: string; [key: string]: unknown };
+type DecisionPayload = { value: string; message?: string; [key: string]: unknown };
 
 type PendingDecision = {
   actions?: GateAction[];
@@ -65,13 +66,13 @@ function append(channel: string, markdown: string, awaiting = false, internal = 
   return f;
 }
 
-function resolveAwaiting(channel: string, id: number, decision: "allow" | "deny", message?: string) {
+function resolveAwaiting(channel: string, id: number, value: string, message?: string) {
   const arr = channels.get(channel);
   if (arr) {
     const f = arr.find((x) => x.id === id);
     if (f) f.awaiting = false;
   }
-  emit(channel, { type: "decided", id, decision, message });
+  emit(channel, { type: "decided", id, value, message });
 }
 
 function setEphemeral(channel: string, key: string, markdown: string | null, animation: string = "typing") {
@@ -242,7 +243,7 @@ export function serve(port: number) {
         const timeoutMs = Number(url.searchParams.get("timeout") ?? 600000);
         const internal = url.searchParams.get("internal") !== "0";
         const f = append(channel, md, true, internal);
-        const decision = await new Promise<{ decision: "allow" | "deny"; message?: string; remember?: boolean } | null>(
+        const decision = await new Promise<{ value: string; message?: string; remember?: boolean } | null>(
           (resolve) => {
             const t = setTimeout(() => {
               pendings.delete(f.id);
@@ -266,7 +267,7 @@ export function serve(port: number) {
           resolveAwaiting(channel, f.id, "deny", "timeout");
           return new Response("timeout", { status: 408 });
         }
-        resolveAwaiting(channel, f.id, decision.decision, decision.message);
+        resolveAwaiting(channel, f.id, decision.value, decision.message);
         return Response.json({ id: f.id, ...decision });
       }
 
@@ -275,9 +276,9 @@ export function serve(port: number) {
       // the fragment is escalated to require a user decision; otherwise resolves with `auto`.
       //
       // Body: markdown (default) OR application/json with `{ markdown, actions? }`.
-      // `actions` is an array of `{ label, decision, ...extra }` objects rendered as
-      // buttons in the UI. The chosen action's full payload is returned as the gate's
-      // decision response so callers can attach freeform metadata (remember, scope, ...).
+      // `actions` is an array of `{ label, value, color?, ...extra }` objects rendered
+      // as buttons in the UI. The chosen action's full payload is returned as the gate's
+      // response so callers can attach freeform metadata (remember, scope, ...).
       const gateMatch = p.match(/^\/([^/]+)\/gate$/);
       if (gateMatch && req.method === "POST") {
         const channel = decodeURIComponent(gateMatch[1]!);
@@ -326,7 +327,7 @@ export function serve(port: number) {
         });
 
         if (!signaled) {
-          return Response.json({ id: f.id, decision: auto, auto: true });
+          return Response.json({ id: f.id, value: auto, auto: true });
         }
 
         // Phase 2: escalate fragment to awaiting and block for /decide.
@@ -361,7 +362,7 @@ export function serve(port: number) {
           resolveAwaiting(channel, f.id, "deny", "timeout");
           return new Response("timeout", { status: 408 });
         }
-        resolveAwaiting(channel, f.id, decision.decision, decision.message);
+        resolveAwaiting(channel, f.id, decision.value, decision.message);
         return Response.json({ id: f.id, ...decision });
       }
 
@@ -391,11 +392,11 @@ export function serve(port: number) {
         let payload: DecisionPayload | null = null;
         if (body && typeof body.actionIndex === "number" && pend.actions?.[body.actionIndex]) {
           const a = pend.actions[body.actionIndex]!;
-          payload = { ...a, decision: a.decision };
-        } else if (body && (body.decision === "allow" || body.decision === "deny")) {
+          payload = { ...a, value: a.value };
+        } else if (body && typeof body.value === "string" && body.value) {
           payload = body as DecisionPayload;
         }
-        if (!payload) return new Response("bad decision", { status: 400 });
+        if (!payload) return new Response("bad value", { status: 400 });
         pend.resolve(payload);
         return Response.json({ ok: true });
       }

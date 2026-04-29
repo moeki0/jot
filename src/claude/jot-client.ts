@@ -33,7 +33,7 @@ export async function signal(channel: string, key: string, body = "") {
   } catch { return {}; }
 }
 
-export type GateAction = { label: string; decision: "allow" | "deny"; remember?: boolean };
+export type GateAction = { label: string; value: string; color?: string; remember?: boolean };
 
 export async function gate(channel: string, key: string, markdown: string, actions: GateAction[], timeoutMs: number) {
   try {
@@ -46,8 +46,8 @@ export async function gate(channel: string, key: string, markdown: string, actio
         signal: AbortSignal.timeout(timeoutMs + 5000),
       }
     );
-    return await res.json() as { decision?: "allow" | "deny"; message?: string; remember?: boolean };
+    return await res.json() as { value?: string; message?: string; remember?: boolean };
   } catch {
-    return { decision: "deny" as const };
+    return { value: "deny" };
   }
 }

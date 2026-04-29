@@ -169,7 +169,7 @@ function renderMarkdown(md: string): string {
   });
 }
 
-type GateAction = { label: string; decision: "allow" | "deny"; [key: string]: unknown };
+type GateAction = { label: string; value: string; color?: string; [key: string]: unknown };
 
 type Fragment = {
   id: number;
@@ -185,7 +185,7 @@ type Event =
   | { type: "fragment"; fragment: Fragment }
   | { type: "ephemeral"; channel: string; key: string; markdown: string | null; animation?: string }
   | { type: "awaiting"; id: number; markdown?: string; actions?: GateAction[] }
-  | { type: "decided"; id: number; decision: "allow" | "deny"; message?: string };
+  | { type: "decided"; id: number; value: string; message?: string };
 
 const fmtTime = (ts: number) => {
   const d = new Date(ts);
@@ -277,7 +277,7 @@ export function App() {
             ));
           } else if (ev.type === "decided") {
             setFragments((prev) => prev.map((f) =>
-              f.id === ev.id ? { ...f, awaiting: false, decided: ev.decision, decidedMessage: ev.message } as any : f
+              f.id === ev.id ? { ...f, awaiting: false } : f
             ));
           }
           if (backlogTimer) clearTimeout(backlogTimer);
@@ -337,7 +337,7 @@ export function App() {
     }
   }, [fragments.length]);
 
-  const decide = useCallback(async (id: number, payload: { decision: "allow" | "deny"; [k: string]: unknown } | { actionIndex: number }) => {
+  const decide = useCallback(async (id: number, payload: { value: string; [k: string]: unknown } | { actionIndex: number }) => {
     try {
       await fetch(`/${encodeURIComponent(channel)}/decide/${id}`, {
         method: "POST",
@@ -571,9 +571,9 @@ function FragmentView({
   registerRef,
   onDecide,
 }: {
-  fragment: Fragment & { decided?: "allow" | "deny"; decidedMessage?: string };
+  fragment: Fragment;
   registerRef: (id: number, el: HTMLElement | null) => void;
-  onDecide: (id: number, payload: { decision: "allow" | "deny"; [k: string]: unknown } | { actionIndex: number }) => void;
+  onDecide: (id: number, payload: { value: string; [k: string]: unknown } | { actionIndex: number }) => void;
 }) {
   const ref = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -588,11 +588,6 @@ function FragmentView({
       <div className="ts">{fmtTime(fragment.ts)}</div>
       <div className="body" dangerouslySetInnerHTML={{ __html: html }} />
       {fragment.awaiting && <PermissionBox actions={fragment.actions} onDecide={(p) => onDecide(fragment.id, p)} />}
-      {fragment.decided && (
-        <div className={`perm-resolved perm-${fragment.decided}`}>
-          {fragment.decided === "allow" ? "Allowed" : `Denied${fragment.decidedMessage ? ` - ${fragment.decidedMessage}` : ""}`}
-        </div>
-      )}
     </article>
   );
 }
@@ -635,8 +630,8 @@ function TypingLabel({ text }: { text: string }) {
 }
 
 const DEFAULT_ACTIONS: GateAction[] = [
-  { label: "Allow", decision: "allow" },
-  { label: "Deny", decision: "deny" },
+  { label: "Allow", value: "allow" },
+  { label: "Deny", value: "deny" },
 ];
 
 function PermissionBox({
@@ -644,27 +639,30 @@ function PermissionBox({
   onDecide,
 }: {
   actions?: GateAction[];
-  onDecide: (p: { decision: "allow" | "deny"; [k: string]: unknown } | { actionIndex: number }) => void;
+  onDecide: (p: { value: string; [k: string]: unknown } | { actionIndex: number }) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const list = actions && actions.length ? actions : DEFAULT_ACTIONS;
   return (
     <div className="perm">
-      {list.map((a, i) => (
-        <button
-          key={i}
-          type="button"
-          className={a.decision === "allow" ? "perm-allow" : "perm-deny"}
-          disabled={busy}
-          onClick={() => {
-            setBusy(true);
-            // If actions came from server, send actionIndex so server resolves
-            // to the full action payload. Otherwise send the payload directly.
-            if (actions && actions.length) onDecide({ actionIndex: i });
-            else onDecide({ decision: a.decision });
-          }}
-        >{a.label}</button>
-      ))}
+      {list.map((a, i) => {
+        const style = a.color
+          ? { background: a.color, borderColor: a.color, color: "#fff" }
+          : undefined;
+        return (
+          <button
+            key={i}
+            type="button"
+            disabled={busy}
+            style={style}
+            onClick={() => {
+              setBusy(true);
+              if (actions && actions.length) onDecide({ actionIndex: i });
+              else onDecide({ value: a.value });
+            }}
+          >{a.label}</button>
+        );
+      })}
     </div>
   );
 }

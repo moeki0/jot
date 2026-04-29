@@ -178,17 +178,17 @@ export async function hookTool() {
   setTimeout(() => { void signal(channel, key); }, 200);
 
   const resp = await gate(channel, key, md, [
-    { label: "Allow", decision: "allow" },
-    { label: "Allow always", decision: "allow", remember: true },
-    { label: "Deny", decision: "deny" },
+    { label: "Allow", value: "allow", color: "oklch(45% 0.15 145)" },
+    { label: "Allow always", value: "allow", remember: true, color: "oklch(45% 0.15 145)" },
+    { label: "Deny", value: "deny", color: "oklch(55% 0.20 25)" },
   ], timeoutMs);
 
-  const decision = resp.decision ?? "deny";
-  if (decision === "allow" && resp.remember) {
+  const value = resp.value ?? "deny";
+  if (value === "allow" && resp.remember) {
     persistAllow(tool, bashCmd, skillName);
   }
 
-  if (decision === "allow") {
+  if (value === "allow") {
     writeStdout(JSON.stringify({
       hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow" },
     }));

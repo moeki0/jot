@@ -718,37 +718,9 @@ main {
   background: var(--soft);
 }
 
-.perm button.perm-allow {
-  background: var(--ink);
-  color: var(--bg);
-  border-color: var(--ink);
-}
-
-.perm button.perm-allow:hover:not(:disabled) {
-  background: oklch(30% 0.01 90);
-}
-
 .perm button:disabled {
   opacity: 0.5;
   cursor: default;
-}
-
-.perm-resolved {
-  margin-top: 12px;
-  font-family: var(--sans);
-  font-size: 12px;
-  color: var(--muted);
-  letter-spacing: 0.02em;
-}
-
-.perm-resolved.perm-allow::before {
-  content: "✓ ";
-  color: oklch(50% 0.14 145);
-}
-
-.perm-resolved.perm-deny::before {
-  content: "✗ ";
-  color: var(--accent);
 }
 
 @media (max-width: 720px) {
