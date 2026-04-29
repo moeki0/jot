@@ -126,6 +126,14 @@ To start Claude Code with the jot channel bridge enabled (experimental `claude/c
 claude --dangerously-load-development-channels server:plugin:jot:jot
 ```
 
+Each Claude session must use its own jot channel — otherwise multiple sessions share `claude-code` and cross-talk. Use `jot pair` to allocate a unique channel, open it in the browser, and inject it via `JOT_CHANNEL`:
+
+```bash
+export JOT_CHANNEL=$(jot pair) && claude --dangerously-load-development-channels server:plugin:jot:jot
+```
+
+`jot pair` prints the channel name to stdout and opens `http://localhost:7878/<channel>` in your browser. Both the hooks and the MCP server pick up `JOT_CHANNEL` from the environment.
+
 ### Tools
 
 | Tool | Description |

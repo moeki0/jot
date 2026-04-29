@@ -31,6 +31,9 @@ Usage:
   jot append <channel>              Append stdin as a message to <channel>
   jot ephemeral <channel> [key]     Post stdin as an ephemeral message; [key] replaces prior value
   jot signal <channel> <key>        Fire a signal on <channel>/<key>
+  jot pair                          Allocate a unique channel, open it in the
+                                    browser, and print the channel name to
+                                    stdout (use with: export JOT_CHANNEL=$(jot pair))
   jot claude hook <name>            Run a Claude Code hook handler
                                     <name>: stop | user-prompt | tool | notify | session-start
   jot help, -h, --help              Show this help
@@ -84,6 +87,17 @@ switch (cmd) {
     const key = argv[2];
     if (!channel || !key) die("usage: jot signal <channel> <key>");
     await post(`/${channel}/signal?key=${encodeURIComponent(key)}`);
+    break;
+  }
+  case "pair": {
+    const rand = Math.random().toString(36).slice(2, 8);
+    const channel = `cc-${rand}`;
+    const target = `${url}/${channel}`;
+    try {
+      const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+      Bun.spawn([opener, target], { stdout: "ignore", stderr: "ignore" });
+    } catch {}
+    console.log(channel);
     break;
   }
   case "claude": {
