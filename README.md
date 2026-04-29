@@ -38,10 +38,14 @@ echo "## hello" | curl -s --data-binary @- localhost:7878/claude-code/append
 | `jot append <channel>` | POST stdin to `/:channel/append?internal=1` |
 | `jot ephemeral <channel> [key]` | POST stdin to `/:channel/ephemeral[?key=...]` |
 | `jot signal <channel> <key>` | POST to `/:channel/signal?key=...` |
+| `jot claude hook <name>` | Run a Claude Code hook handler (`stop`/`user-prompt`/`tool`/`notify`/`session-start`) |
+| `jot claude bridge [...args]` | Start the persistent claude-bridge daemon (extra args forwarded to `claude`) |
 
 Honors `JOT_URL` (default `http://localhost:7878`).
 
 Channels are created on first POST. In-memory only — fragments vanish when the server stops. Each channel keeps the most recent 500 fragments.
+
+Channel paths support slash-separated namespaces, e.g. `cc/abc`. Namespaces can be backed by external suppliers via the registry (see below).
 
 ## API
 
@@ -53,6 +57,9 @@ Channels are created on first POST. In-memory only — fragments vanish when the
 - `GET /:channel/stream` — SSE stream of `{type:"fragment"|"status"|"decided", ...}` events (backlog + live)
 - `GET /:channel/wait?since=<id>&timeout=<ms>` — long-poll for the next non-internal fragment (used by the MCP bridge).
 - `GET /channels` — list with counts
+- `GET /channels/stream` — SSE stream of channel meta events (created/updated)
+- `GET /namespaces` — list registered namespace suppliers
+- `GET /namespaces/stream` — SSE stream of supplier registry events
 
 ## Rendering
 
@@ -133,6 +140,17 @@ export JOT_CHANNEL=$(jot pair) && claude --dangerously-load-development-channels
 ```
 
 `jot pair` prints the channel name to stdout and opens `http://localhost:7878/<channel>` in your browser. Both the hooks and the MCP server pick up `JOT_CHANNEL` from the environment.
+
+### Claude bridge daemon
+
+For session-less, GUI-driven flows (e.g. starting a Claude session from a phone-side browser), run the persistent bridge:
+
+```bash
+jot claude bridge                      # extra args after `bridge` are forwarded to `claude`
+jot claude bridge --model opus
+```
+
+The bridge announces a `cc` namespace via the supplier registry, watches `/channels/stream` for new `cc/*` channels, and runs one persistent `claude -p` (stream-json) per channel — so sessions survive across user messages with no static configuration. The channels dropdown in the UI exposes a namespace selector for picking suppliers.
 
 ### Configuration
 
