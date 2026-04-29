@@ -362,24 +362,21 @@ export function App() {
         }).catch(() => {});
       }
       // Scroll so the freshly-sent fragment's top sits ~100px below the viewport top.
-      // The new fragment arrives via SSE asynchronously, so poll for up to ~600ms.
-      const scrollToNewest = () => {
-        const fragments = document.querySelectorAll<HTMLElement>(".fragment");
-        const last = fragments[fragments.length - 1];
-        if (last) {
-          const offset = last.getBoundingClientRect().top + window.scrollY - 100;
-          window.scrollTo({ top: offset, behavior: "smooth" });
-        }
-      };
+      // The new fragment arrives via SSE asynchronously, so wait for the count to
+      // increase, then scroll on the next frame so layout has settled.
       const startCount = document.querySelectorAll(".fragment").length;
       let tries = 0;
       const tick = () => {
-        const now = document.querySelectorAll(".fragment").length;
-        if (now > startCount || tries > 30) {
-          scrollToNewest();
+        const fragments = document.querySelectorAll<HTMLElement>(".fragment");
+        if (fragments.length > startCount) {
+          const last = fragments[fragments.length - 1]!;
+          requestAnimationFrame(() => {
+            const offset = last.getBoundingClientRect().top + window.scrollY - 100;
+            window.scrollTo({ top: offset, behavior: "smooth" });
+          });
           return;
         }
-        tries++;
+        if (tries++ > 60) return;
         requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
