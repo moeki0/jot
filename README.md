@@ -4,7 +4,8 @@ Post Markdown fragments over HTTP. Read them flowing in your browser.
 
 ```bash
 bun install
-bun start                # http://localhost:7878/<channel>
+npm link                 # exposes the `jot` CLI on PATH
+jot                      # http://localhost:7878/<channel>  (same as `jot serve`)
 # or, for hot-reloading frontend dev:
 bun run dev              # spawns Bun API + Vite (http://localhost:5173)
 ```
@@ -12,8 +13,21 @@ bun run dev              # spawns Bun API + Vite (http://localhost:5173)
 Push a fragment:
 
 ```bash
+echo "## hello" | jot append claude-code
+# equivalent to:
 echo "## hello" | curl -s --data-binary @- localhost:7878/claude-code/append
 ```
+
+`jot` subcommands (all read stdin where applicable, all best-effort/silent):
+
+| Command | Effect |
+|---|---|
+| `jot` / `jot serve` | start the HTTP server |
+| `jot append <channel>` | POST stdin to `/:channel/append?internal=1` |
+| `jot ephemeral <channel> [key]` | POST stdin to `/:channel/ephemeral[?key=...]` |
+| `jot signal <channel> <key>` | POST to `/:channel/signal?key=...` |
+
+Honors `JOT_URL` (default `http://localhost:7878`).
 
 Channels are created on first POST. In-memory only — fragments vanish when the server stops. Each channel keeps the most recent 500 fragments.
 
@@ -36,34 +50,37 @@ Channels are created on first POST. In-memory only — fragments vanish when the
 
 ## Claude Code hooks
 
-The `scripts/` directory has hooks that wire Claude Code to a `claude-code` channel:
+Hooks are subcommands of the `jot` CLI:
 
-| Hook | Script | What it does |
+| Hook | Subcommand | What it does |
 |---|---|---|
-| `UserPromptSubmit` | `claude-typing.sh` | Posts the user prompt (truncated) and sets status to `thinking…` |
-| `Stop` | `claude-hook.sh` | Posts the assistant's text reply, clears the status |
-| `PreToolUse` | `claude-tool.sh` | Posts a Markdown fragment per tool call (Edit shows a real `diff -u`) |
-| `Notification` | `claude-notify.sh` | Posts permission asks / idle alerts |
+| `UserPromptSubmit` | `jot claude hook user-prompt` | Posts the user prompt (truncated) and sets status to `thinking…` |
+| `Stop` | `jot claude hook stop` | Posts the assistant's text reply, clears the status |
+| `PreToolUse` | `jot claude hook tool` | Posts a Markdown fragment per tool call (Edit shows a real `diff -u`) |
+| `Notification` | `jot claude hook notify` | Posts permission asks / idle alerts |
+| `SessionStart` | `jot claude hook session-start` | Marks the channel with a session-start fragment |
 
-Add to `~/.claude/settings.json`:
+Add to `~/.claude/settings.json` (after `npm link`):
 
 ```json
 {
   "hooks": {
-    "UserPromptSubmit": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/jot/scripts/claude-typing.sh" }] }],
-    "Stop":             [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/jot/scripts/claude-hook.sh"   }] }],
-    "PreToolUse":       [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/jot/scripts/claude-tool.sh"   }] }],
-    "Notification":     [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/jot/scripts/claude-notify.sh" }] }]
+    "UserPromptSubmit": [{ "matcher": "", "hooks": [{ "type": "command", "command": "jot claude hook user-prompt"   }] }],
+    "Stop":             [{ "matcher": "", "hooks": [{ "type": "command", "command": "jot claude hook stop"          }] }],
+    "PreToolUse":       [{ "matcher": "", "hooks": [{ "type": "command", "command": "jot claude hook tool"          }] }],
+    "Notification":     [{ "matcher": "", "hooks": [{ "type": "command", "command": "jot claude hook notify"        }] }],
+    "SessionStart":     [{ "matcher": "", "hooks": [{ "type": "command", "command": "jot claude hook session-start" }] }]
   }
 }
 ```
 
 Override the channel or label via env: `JOT_URL`, `JOT_CHANNEL`, `JOT_STATUS`.
 
-Both Claude Code and Codex hooks use the shared channel resolver in
-`scripts/_jot-channel.sh`. By default, the first prompt of a session becomes a
-short channel slug; later hooks with the same `session_id` reuse that channel.
-Set `JOT_CHANNEL` to force one fixed channel across all agents.
+The shared channel resolver maps each `session_id` to a jot channel. By default,
+the first prompt of a session becomes a short channel slug; later hooks with
+the same `session_id` reuse that channel. Set `JOT_CHANNEL` to force one fixed
+channel across all agents. Mappings are persisted to
+`~/.config/jot/sessions.json` (override with `JOT_SESSIONS_FILE`).
 
 ## Claude Code plugin (MCP bridge)
 
