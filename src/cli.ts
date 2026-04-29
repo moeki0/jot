@@ -36,6 +36,10 @@ Usage:
                                     stdout (use with: export JOT_CHANNEL=$(jot pair))
   jot claude hook <name>            Run a Claude Code hook handler
                                     <name>: stop | user-prompt | tool | notify | session-start
+  jot claude bridge [...args]       Start the persistent claude-bridge daemon.
+                                    Announces a "cc" namespace and runs one
+                                    persistent \`claude -p\` per cc/* channel.
+                                    Extra args are forwarded to claude.
   jot help, -h, --help              Show this help
   jot version, -v, --version        Show version
 
@@ -103,8 +107,13 @@ switch (cmd) {
     break;
   }
   case "claude": {
+    if (argv[1] === "bridge") {
+      const m = await import("./claude/bridge");
+      await m.runBridge(argv.slice(2));
+      break;
+    }
     if (argv[1] !== "hook" || !argv[2]) {
-      die("usage: jot claude hook <stop|user-prompt|tool|notify|session-start>");
+      die("usage: jot claude (hook <name>|bridge [...args])");
     }
     const which = argv[2];
     switch (which) {
