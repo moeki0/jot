@@ -39,11 +39,7 @@ export function resolveChannel(sessionId: string | undefined, prompt?: string): 
     if (matches.length) fromPrompt = matches[matches.length - 1]![1] ?? "";
   }
 
-  if (fromPrompt && fromPrompt !== existing) {
-    map[sessionId] = fromPrompt;
-    writeMap(map);
-    return fromPrompt;
-  }
+  if (fromPrompt) return fromPrompt;
   if (existing) return existing;
 
   const slug = prompt ? slugify(prompt) : "";
