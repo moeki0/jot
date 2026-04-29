@@ -1,0 +1,20 @@
+{
+  "name": "stream.md",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "stream.md": "./src/cli.ts"
+  },
+  "scripts": {
+    "start": "bun src/cli.ts",
+    "dev": "bun --hot src/cli.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "marked": "^14.1.3"
+  }
+}

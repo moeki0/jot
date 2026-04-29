@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>stream.md</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <span class="dot" id="dot"></span>
+        <span class="name">stream.md</span>
+      </div>
+      <button id="channel-button" class="channel-button" aria-haspopup="dialog">
+        <span id="channel-name"></span>
+        <span class="caret">▾</span>
+      </button>
+    </header>
+    <main>
+      <div id="stream"></div>
+    </main>
+    <div id="overlay" class="overlay">
+      <div class="sheet" role="dialog" aria-label="channels">
+        <div class="sheet-title">channels</div>
+        <nav class="channels" id="channels"></nav>
+      </div>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
