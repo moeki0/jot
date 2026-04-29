@@ -199,6 +199,8 @@ function getInitialChannel() {
   return c;
 }
 
+const chPath = (ch: string) => ch.split("/").map(encodeURIComponent).join("/");
+
 function useSettings() {
   const defs = {
     font: { default: "sans", values: ["sans", "serif", "mono"] },
@@ -247,7 +249,7 @@ export function App() {
 
     const connect = () => {
       if (aborted) return;
-      es = new EventSource(`/${encodeURIComponent(channel)}/stream`);
+      es = new EventSource(`/${chPath(channel)}/stream`);
       es.onopen = () => {
         setLive(true);
         if (backlogTimer) clearTimeout(backlogTimer);
@@ -339,7 +341,7 @@ export function App() {
 
   const decide = useCallback(async (id: number, payload: { value: string; [k: string]: unknown } | { actionIndex: number }) => {
     try {
-      await fetch(`/${encodeURIComponent(channel)}/decide/${id}`, {
+      await fetch(`/${chPath(channel)}/decide/${id}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
@@ -351,7 +353,7 @@ export function App() {
   const submitMessage = useCallback(async (md: string) => {
     if (!md.trim()) return false;
     try {
-      await fetch(`/${encodeURIComponent(channel)}/append`, {
+      await fetch(`/${chPath(channel)}/append`, {
         method: "POST",
         headers: { "content-type": "text/plain; charset=utf-8" },
         body: md,
@@ -684,6 +686,15 @@ function Composer({ onSubmit, channel }: { onSubmit: (md: string) => Promise<boo
   const [value, setValue] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(pointer: coarse)");
+    const onChange = () => setIsMobile(mq.matches);
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
 
   const autoSize = () => {
     const el = ref.current;
@@ -711,7 +722,7 @@ function Composer({ onSubmit, channel }: { onSubmit: (md: string) => Promise<boo
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    if (e.key === "Enter" && !e.shiftKey && !(e.nativeEvent as any).isComposing && !isMobile) {
       e.preventDefault();
       submit();
       return;
@@ -765,7 +776,7 @@ function Composer({ onSubmit, channel }: { onSubmit: (md: string) => Promise<boo
       const fd = new FormData();
       for (const f of files) fd.append("files", f, f.name);
       try {
-        const r = await fetch(`/${encodeURIComponent(channel)}/upload`, { method: "POST", body: fd });
+        const r = await fetch(`/${chPath(channel)}/upload`, { method: "POST", body: fd });
         const data = (await r.json()) as { paths?: string[] };
         if (data.paths?.length) insertFormatted(data.paths);
       } catch {}
@@ -823,6 +834,11 @@ function Composer({ onSubmit, channel }: { onSubmit: (md: string) => Promise<boo
         rows={1}
         placeholder="write…"
       />
+      {isMobile && (
+        <button type="submit" className="composer-send" aria-label="send" disabled={!value.trim()}>
+          send
+        </button>
+      )}
     </form>
   );
 }
@@ -849,12 +865,47 @@ function ChannelsDropdown({
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [onClose, anchor]);
+  const [namespaces, setNamespaces] = useState<{ prefix: string; label: string }[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/namespaces").then((r) => r.json()).then((d) => {
+      if (!cancelled && Array.isArray(d)) setNamespaces(d);
+    }).catch(() => {});
+    const es = new EventSource("/namespaces/stream");
+    es.onmessage = (ev) => {
+      try {
+        const m = JSON.parse(ev.data);
+        if (m.type === "namespaces" && Array.isArray(m.namespaces)) setNamespaces(m.namespaces);
+      } catch {}
+    };
+    return () => { cancelled = true; es.close(); };
+  }, []);
+  const newChannel = (prefix?: string) => {
+    const slug = Math.random().toString(36).slice(2, 8);
+    window.location.href = "/" + (prefix ? `${encodeURIComponent(prefix)}/${slug}` : slug);
+  };
   return (
     <div className="dropdown" ref={ref}>
       <div className="sheet-title">channels</div>
       <nav className="channels">
+        {namespaces.length === 0 ? (
+          <a href="#" className="new-channel" onClick={(e) => { e.preventDefault(); newChannel(); }}>
+            <span>+ new random channel</span>
+          </a>
+        ) : (
+          <>
+            <a href="#" className="new-channel" onClick={(e) => { e.preventDefault(); newChannel(); }}>
+              <span>+ new (none)</span>
+            </a>
+            {namespaces.map((n) => (
+              <a key={n.prefix} href="#" className="new-channel" onClick={(e) => { e.preventDefault(); newChannel(n.prefix); }}>
+                <span>+ new {n.label}</span>
+              </a>
+            ))}
+          </>
+        )}
         {channels.map((c) => (
-          <a key={c.name} href={`/${encodeURIComponent(c.name)}`} className={c.name === current ? "active" : ""}>
+          <a key={c.name} href={`/${chPath(c.name)}`} className={c.name === current ? "active" : ""}>
             <span>{c.name}</span>
             <span className="count">{c.count}</span>
           </a>

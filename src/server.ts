@@ -46,6 +46,66 @@ const pendings = new Map<number, PendingDecision>();
 const gates = new Map<string, Gate>();
 let nextId = 1;
 
+type MetaEvent =
+  | { type: "channel.created"; channel: string }
+  | { type: "channel.appended"; channel: string; id: number }
+  | { type: "supplier.added"; namespaces: { prefix: string; label: string }[] }
+  | { type: "supplier.removed"; namespaces: { prefix: string; label: string }[] };
+
+const metaSubscribers = new Set<(e: MetaEvent) => void>();
+function emitMeta(e: MetaEvent) {
+  for (const cb of metaSubscribers) cb(e);
+}
+
+type Supplier = {
+  id: string;
+  namespaces: { prefix: string; label: string }[];
+  lastSeen: number;
+};
+const suppliers = new Map<string, Supplier>();
+const SUPPLIER_TTL = 30_000;
+function pruneSuppliers() {
+  const now = Date.now();
+  for (const [id, s] of suppliers) {
+    if (now - s.lastSeen > SUPPLIER_TTL) {
+      suppliers.delete(id);
+      emitMeta({ type: "supplier.removed", namespaces: s.namespaces });
+    }
+  }
+}
+setInterval(pruneSuppliers, 5_000).unref?.();
+
+function aggregatedNamespaces(): { prefix: string; label: string }[] {
+  pruneSuppliers();
+  const seen = new Map<string, string>();
+  for (const s of suppliers.values()) {
+    for (const ns of s.namespaces) {
+      if (!seen.has(ns.prefix)) seen.set(ns.prefix, ns.label);
+    }
+  }
+  return [...seen.entries()].map(([prefix, label]) => ({ prefix, label }));
+}
+
+const ACTION_SUFFIXES = ["append", "wait", "permission", "gate", "signal", "ephemeral", "stream", "upload"] as const;
+type Action = (typeof ACTION_SUFFIXES)[number] | "decide";
+
+function parseChannelAction(p: string): { channel: string; action: Action; id?: number } | null {
+  if (!p.startsWith("/") || p.length < 2) return null;
+  const path = p.slice(1);
+  const decideM = path.match(/^(.+)\/decide\/(\d+)$/);
+  if (decideM) {
+    const ch = decodeURIComponent(decideM[1]!);
+    if (ch) return { channel: ch, action: "decide", id: Number(decideM[2]) };
+  }
+  for (const a of ACTION_SUFFIXES) {
+    if (path.endsWith("/" + a)) {
+      const ch = path.slice(0, -a.length - 1);
+      if (ch) return { channel: decodeURIComponent(ch), action: a };
+    }
+  }
+  return null;
+}
+
 function emit(channel: string, e: Event) {
   for (const cb of subscribers.get(channel) ?? []) cb(e);
 }
@@ -56,12 +116,15 @@ function append(channel: string, markdown: string, awaiting = false, internal = 
   const f: Fragment = { id: nextId++, channel, ts: Date.now(), markdown };
   if (awaiting) f.awaiting = true;
   if (internal) f.internal = true;
+  const existed = channels.has(channel);
   const arr = channels.get(channel) ?? [];
   arr.push(f);
   if (arr.length > MAX_FRAGMENTS_PER_CHANNEL) {
     arr.splice(0, arr.length - MAX_FRAGMENTS_PER_CHANNEL);
   }
   channels.set(channel, arr);
+  if (!existed) emitMeta({ type: "channel.created", channel });
+  emitMeta({ type: "channel.appended", channel, id: f.id });
   emit(channel, { type: "fragment", fragment: f });
   return f;
 }
@@ -114,9 +177,50 @@ const securityHeaders = {
   "referrer-policy": "no-referrer",
 };
 
-export function serve(port: number) {
+function metaStream(
+  req: Request,
+  filter: MetaEvent["type"][],
+  initial?: () => unknown,
+) {
+  const stream = new ReadableStream({
+    start(controller) {
+      const enc = new TextEncoder();
+      let closed = false;
+      const cleanup = () => {
+        if (closed) return;
+        closed = true;
+        metaSubscribers.delete(cb);
+        try { controller.close(); } catch {}
+      };
+      const safeEnqueue = (chunk: Uint8Array) => {
+        if (closed) return;
+        try { controller.enqueue(chunk); }
+        catch { cleanup(); }
+      };
+      if (initial) {
+        safeEnqueue(enc.encode(`data: ${JSON.stringify(initial())}\n\n`));
+      }
+      const cb = (e: MetaEvent) => {
+        if (!filter.includes(e.type)) return;
+        safeEnqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`));
+      };
+      metaSubscribers.add(cb);
+      req.signal.addEventListener("abort", cleanup);
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+    },
+  });
+}
+
+export function serve(port: number, hostname?: string) {
   return Bun.serve({
     port,
+    ...(hostname ? { hostname } : {}),
     async fetch(req) {
       const url = new URL(req.url);
       const p = url.pathname;
@@ -156,6 +260,44 @@ export function serve(port: number) {
         return Response.json(list);
       }
 
+      // GET /channels/stream — SSE for channel meta events
+      if (p === "/channels/stream" && req.method === "GET") {
+        return metaStream(req, ["channel.created", "channel.appended"]);
+      }
+
+      // GET /namespaces — supplier-announced namespace list
+      if (p === "/namespaces" && req.method === "GET") {
+        return Response.json(aggregatedNamespaces());
+      }
+
+      // GET /namespaces/stream — SSE for namespace registry changes
+      if (p === "/namespaces/stream" && req.method === "GET") {
+        return metaStream(req, ["supplier.added", "supplier.removed"], () => ({
+          type: "namespaces",
+          namespaces: aggregatedNamespaces(),
+        }));
+      }
+
+      // POST /suppliers/:id/announce — register/heartbeat a supplier
+      const announceMatch = p.match(/^\/suppliers\/([^/]+)\/announce$/);
+      if (announceMatch && req.method === "POST") {
+        const id = decodeURIComponent(announceMatch[1]!);
+        const body = (await req.json().catch(() => null)) as
+          | { namespaces?: { prefix?: string; label?: string }[] }
+          | null;
+        const namespaces = (body?.namespaces ?? [])
+          .filter((n) => typeof n?.prefix === "string" && n.prefix && /^[a-z0-9][a-z0-9-]*$/i.test(n.prefix))
+          .map((n) => ({ prefix: n.prefix!, label: n.label || n.prefix! }));
+        const prev = suppliers.get(id);
+        suppliers.set(id, { id, namespaces, lastSeen: Date.now() });
+        if (!prev) emitMeta({ type: "supplier.added", namespaces });
+        else if (JSON.stringify(prev.namespaces) !== JSON.stringify(namespaces)) {
+          emitMeta({ type: "supplier.removed", namespaces: prev.namespaces });
+          emitMeta({ type: "supplier.added", namespaces });
+        }
+        return Response.json({ ok: true, ttl: SUPPLIER_TTL });
+      }
+
       // GET /uploads/:channel/:file — serve uploaded files (so <img> works in markdown).
       const uploadFileMatch = p.match(/^\/uploads\/([^/]+)\/([^/]+)$/);
       if (uploadFileMatch && req.method === "GET") {
@@ -165,12 +307,13 @@ export function serve(port: number) {
         return new Response(Bun.file(join(UPLOADS, ch, name)));
       }
 
+      const ca = parseChannelAction(p);
+
       // POST /:channel/upload — multipart upload; saves files locally and returns
       // both an absolute filesystem path (for Claude / shell tools) and an http
       // URL (so the GUI can render the file inline).
-      const uploadMatch = p.match(/^\/([^/]+)\/upload$/);
-      if (uploadMatch && req.method === "POST") {
-        const channel = decodeURIComponent(uploadMatch[1]!);
+      if (ca?.action === "upload" && req.method === "POST") {
+        const channel = ca.channel;
         const safeChannel = channel.replace(/[^A-Za-z0-9._-]/g, "_");
         const dir = join(UPLOADS, safeChannel);
         await Bun.write(join(dir, ".keep"), "");
@@ -192,9 +335,8 @@ export function serve(port: number) {
       }
 
       // POST /:channel/append
-      const appendMatch = p.match(/^\/([^/]+)\/append$/);
-      if (appendMatch && req.method === "POST") {
-        const channel = decodeURIComponent(appendMatch[1]!);
+      if (ca?.action === "append" && req.method === "POST") {
+        const channel = ca.channel;
         const md = await req.text();
         if (!md.trim()) return new Response("empty", { status: 400 });
         const internal = url.searchParams.get("internal") === "1";
@@ -203,9 +345,8 @@ export function serve(port: number) {
       }
 
       // GET /:channel/wait?since=<id>&timeout=<ms> — long-poll for the next fragment with id > since
-      const waitMatch = p.match(/^\/([^/]+)\/wait$/);
-      if (waitMatch && req.method === "GET") {
-        const channel = decodeURIComponent(waitMatch[1]!);
+      if (ca?.action === "wait" && req.method === "GET") {
+        const channel = ca.channel;
         const since = Number(url.searchParams.get("since") ?? 0);
         const timeoutMs = Number(url.searchParams.get("timeout") ?? 600000);
         const arr = channels.get(channel) ?? [];
@@ -235,9 +376,8 @@ export function serve(port: number) {
 
       // POST /:channel/permission — body is Markdown; long-polls until /decide/:id arrives.
       // Returns {decision, message?} or 408 timeout.
-      const permMatch = p.match(/^\/([^/]+)\/permission$/);
-      if (permMatch && req.method === "POST") {
-        const channel = decodeURIComponent(permMatch[1]!);
+      if (ca?.action === "permission" && req.method === "POST") {
+        const channel = ca.channel;
         const md = await req.text();
         if (!md.trim()) return new Response("empty", { status: 400 });
         const timeoutMs = Number(url.searchParams.get("timeout") ?? 600000);
@@ -279,9 +419,8 @@ export function serve(port: number) {
       // `actions` is an array of `{ label, value, color?, ...extra }` objects rendered
       // as buttons in the UI. The chosen action's full payload is returned as the gate's
       // response so callers can attach freeform metadata (remember, scope, ...).
-      const gateMatch = p.match(/^\/([^/]+)\/gate$/);
-      if (gateMatch && req.method === "POST") {
-        const channel = decodeURIComponent(gateMatch[1]!);
+      if (ca?.action === "gate" && req.method === "POST") {
+        const channel = ca.channel;
         const ctype = req.headers.get("content-type") ?? "";
         let md = "";
         let actions: GateAction[] | undefined;
@@ -367,8 +506,7 @@ export function serve(port: number) {
       }
 
       // POST /:channel/signal?key= — escalate any pending /gate for this key.
-      const signalMatch = p.match(/^\/([^/]+)\/signal$/);
-      if (signalMatch && req.method === "POST") {
+      if (ca?.action === "signal" && req.method === "POST") {
         const key = url.searchParams.get("key") ?? "";
         if (!key) return new Response("missing key", { status: 400 });
         const extra = await req.text();
@@ -379,9 +517,8 @@ export function serve(port: number) {
       }
 
       // POST /:channel/decide/:id — browser sends a decision
-      const decideMatch = p.match(/^\/([^/]+)\/decide\/(\d+)$/);
-      if (decideMatch && req.method === "POST") {
-        const id = Number(decideMatch[2]);
+      if (ca?.action === "decide" && req.method === "POST") {
+        const id = ca.id!;
         const body = (await req.json().catch(() => null)) as
           | (DecisionPayload & { actionIndex?: number })
           | null;
@@ -404,9 +541,8 @@ export function serve(port: number) {
       // POST /:channel/ephemeral?key=KEY — set or clear an ephemeral message.
       // Body is Markdown; empty body clears that key. Omitting key clears all
       // ephemerals for the channel.
-      const ephemeralMatch = p.match(/^\/([^/]+)\/ephemeral$/);
-      if (ephemeralMatch && req.method === "POST") {
-        const channel = decodeURIComponent(ephemeralMatch[1]!);
+      if (ca?.action === "ephemeral" && req.method === "POST") {
+        const channel = ca.channel;
         const key = url.searchParams.get("key") ?? "";
         const animation = url.searchParams.get("animation") ?? "typing";
         const body = await req.text();
@@ -420,27 +556,9 @@ export function serve(port: number) {
         return Response.json({ ok: true, key, markdown: cleared ? null : body, animation });
       }
 
-      // GET /:channel — fragments JSON, or HTML if browser
-      const channelMatch = p.match(/^\/([^/]+)$/);
-      if (channelMatch && req.method === "GET") {
-        const wantsHtml = (req.headers.get("accept") ?? "").includes("text/html");
-        if (wantsHtml) {
-          return new Response(Bun.file(join(PUBLIC, "index.html")), {
-            headers: {
-              "content-type": "text/html; charset=utf-8",
-              ...securityHeaders,
-            },
-          });
-        }
-        const channel = decodeURIComponent(channelMatch[1]!);
-        const frags = channels.get(channel) ?? [];
-        return Response.json(frags);
-      }
-
-      // GET /:channel/stream — SSE
-      const streamMatch = p.match(/^\/([^/]+)\/stream$/);
-      if (streamMatch && req.method === "GET") {
-        const channel = decodeURIComponent(streamMatch[1]!);
+      // GET /:channel/stream — SSE (multi-segment supported)
+      if (ca?.action === "stream" && req.method === "GET") {
+        const channel = ca.channel;
         const stream = new ReadableStream({
           start(controller) {
             const enc = new TextEncoder();
@@ -480,6 +598,27 @@ export function serve(port: number) {
             connection: "keep-alive",
           },
         });
+      }
+
+      // GET /<channel...> — fragments JSON or HTML shell. Multi-segment supported.
+      if (req.method === "GET" && p.length > 1 && !ca) {
+        const first = p.split("/", 2)[1] ?? "";
+        const reserved = new Set(["channels", "namespaces", "suppliers", "uploads", "app.js", "index.css", "index.html"]);
+        if (reserved.has(first) || first.startsWith("app-")) {
+          return new Response("not found", { status: 404 });
+        }
+        const wantsHtml = (req.headers.get("accept") ?? "").includes("text/html");
+        if (wantsHtml) {
+          return new Response(Bun.file(join(PUBLIC, "index.html")), {
+            headers: {
+              "content-type": "text/html; charset=utf-8",
+              ...securityHeaders,
+            },
+          });
+        }
+        const channel = decodeURIComponent(p.slice(1));
+        const frags = channels.get(channel) ?? [];
+        return Response.json(frags);
       }
 
       return new Response("not found", { status: 404 });

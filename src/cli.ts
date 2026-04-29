@@ -41,6 +41,7 @@ Usage:
 
 Environment:
   PORT       Port for \`jot serve\` (default 7878)
+  HOST       Bind address for \`jot serve\` (default Bun's: 0.0.0.0). Set to 127.0.0.1 to restrict to localhost.
   JOT_URL    Base URL for client commands (default http://localhost:7878)
 `;
 
@@ -64,8 +65,9 @@ switch (cmd) {
   case undefined:
   case "serve": {
     const port = Number(process.env.PORT ?? 7878);
-    serve(port);
-    console.log(`jot listening on http://localhost:${port}`);
+    const host = process.env.HOST;
+    serve(port, host);
+    console.log(`jot listening on http://${host ?? "localhost"}:${port}`);
     break;
   }
   case "append": {
