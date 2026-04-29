@@ -134,13 +134,6 @@ export JOT_CHANNEL=$(jot pair) && claude --dangerously-load-development-channels
 
 `jot pair` prints the channel name to stdout and opens `http://localhost:7878/<channel>` in your browser. Both the hooks and the MCP server pick up `JOT_CHANNEL` from the environment.
 
-### Tools
-
-| Tool | Description |
-|---|---|
-| `reply` | Post a markdown fragment back to the jot channel. Self-posted ids are not redelivered as channel events. |
-| `list_channels` | List jot channels with fragment counts. |
-
 ### Configuration
 
 The MCP server reads:
