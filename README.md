@@ -50,16 +50,21 @@ Channel paths support slash-separated namespaces, e.g. `cc/abc`. Namespaces can 
 ## API
 
 - `POST /:channel/append` — body is Markdown
-- `POST /:channel/status` — body is a label string ("thinking…", "building…", …); empty/`off`/`0` clears
-- `POST /:channel/permission` — body is Markdown; long-polls until the browser POSTs `/decide/:id`. Response: `{id, decision:"allow"|"deny", message?}` or 408 timeout. Optional `?timeout=ms` (default 600000).
-- `POST /:channel/decide/:id` — body `{decision:"allow"|"deny", message?}`. Browser sends this when the user clicks Allow/Deny.
+- `POST /:channel/ephemeral?key=<key>&animation=<name>` — body is Markdown; empty body clears the key. Used for transient labels ("thinking…", "building…", …) that aren't part of the fragment log.
+- `POST /:channel/permission` — body is Markdown; long-polls until the browser POSTs `/decide/:id`. Response: `{id, value, message?, ...}` or 408 timeout. Optional `?timeout=ms` (default 600000).
+- `POST /:channel/gate?key=&wait=&timeout=&auto=allow|deny` — generic two-phase gate. Body is Markdown, or JSON `{markdown, actions?}` to render custom action buttons. If a matching `/signal` arrives within `wait` ms, the gate escalates to a real user decision; otherwise it auto-resolves.
+- `POST /:channel/signal?key=...` — escalate any pending `/gate` for that key.
+- `POST /:channel/decide/:id` — browser sends `{value, message?}` or `{actionIndex, ...}`.
+- `POST /:channel/upload` — multipart upload; returns `{files:[{path,url,name}], paths}`.
+- `GET /uploads/:channel/:file` — serves uploaded files (so `<img>` works in markdown).
 - `GET /:channel` — JSON of fragments (HTML if browser)
-- `GET /:channel/stream` — SSE stream of `{type:"fragment"|"status"|"decided", ...}` events (backlog + live)
+- `GET /:channel/stream` — SSE stream of `{type:"fragment"|"ephemeral"|"awaiting"|"decided", ...}` events (backlog + live)
 - `GET /:channel/wait?since=<id>&timeout=<ms>` — long-poll for the next non-internal fragment (used by the MCP bridge).
 - `GET /channels` — list with counts
 - `GET /channels/stream` — SSE stream of channel meta events (created/updated)
 - `GET /namespaces` — list registered namespace suppliers
 - `GET /namespaces/stream` — SSE stream of supplier registry events
+- `POST /suppliers/:id/announce` — register/heartbeat a namespace supplier
 
 ## Rendering
 
@@ -73,13 +78,13 @@ Hooks are subcommands of the `jot` CLI:
 
 | Hook | Subcommand | What it does |
 |---|---|---|
-| `UserPromptSubmit` | `jot claude hook user-prompt` | Posts the user prompt (truncated) and sets status to `thinking…` |
-| `Stop` | `jot claude hook stop` | Posts the assistant's text reply, clears the status |
+| `UserPromptSubmit` | `jot claude hook user-prompt` | Posts the user prompt (truncated) and shows a `Thinking…` ephemeral |
+| `Stop` | `jot claude hook stop` | Posts the assistant's text reply, clears the ephemeral |
 | `PreToolUse` | `jot claude hook tool` | Posts a Markdown fragment per tool call (Edit shows a real `diff -u`) |
 | `Notification` | `jot claude hook notify` | Posts permission asks / idle alerts |
 | `SessionStart` | `jot claude hook session-start` | Marks the channel with a session-start fragment |
 
-Add to `~/.claude/settings.json` (after `npm link`):
+Add to `~/.claude/settings.json` (with `jot` available on `PATH`):
 
 ```json
 {
@@ -93,7 +98,7 @@ Add to `~/.claude/settings.json` (after `npm link`):
 }
 ```
 
-Override the channel or label via env: `JOT_URL`, `JOT_CHANNEL`, `JOT_STATUS`.
+Override the channel or ephemeral label via env: `JOT_URL`, `JOT_CHANNEL`, `JOT_STATUS`.
 
 The shared channel resolver maps each `session_id` to a jot channel. By default,
 the first prompt of a session becomes a short channel slug; later hooks with
