@@ -88,11 +88,11 @@ is_user_allowed() {
   return 1
 }
 
-# --- short-circuit: allowlisted ----------------------------------------------
+# --- detect allowlisted ------------------------------------------------------
 
+allowlisted=0
 if is_default_allowed || is_user_allowed; then
-  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
-  exit 0
+  allowlisted=1
 fi
 
 # --- markdown for jot --------------------------------------------------------
@@ -183,10 +183,12 @@ status_label=$(printf '%s' "$status_label" | head -c 28)
 printf '%s' "$status_label" \
   | curl -s --max-time 1 --data-binary @- "$url/$channel/status" > /dev/null 2>&1 || true
 
-# No session → fire-and-forget post, allow.
-if [ -z "$session_id" ]; then
-  printf '%s' "$md" \
-    | curl -s --max-time 1 --data-binary @- "$url/$channel/append?internal=1" > /dev/null 2>&1 || true
+# Always post the tool fragment to jot so the timeline shows what's running.
+printf '%s' "$md" \
+  | curl -s --max-time 1 --data-binary @- "$url/$channel/append?internal=1" > /dev/null 2>&1 || true
+
+# Allowlisted or no session → no gate, just allow.
+if [ "$allowlisted" = "1" ] || [ -z "$session_id" ]; then
   printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
   exit 0
 fi
