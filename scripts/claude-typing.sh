@@ -21,20 +21,26 @@ printf '%s' "$label" \
 
 # Post a short version of the prompt as a fragment (first 2 lines, capped at 200 chars).
 prompt=$(echo "$input" | jq -r '.prompt // empty' 2>/dev/null)
-# Skip if the prompt is itself a channel event ingested from the harness
-# (jot/tunr/imessage/etc) — avoids echoing GUI posts and notifications back
-# into the timeline as a "You — ..." line.
+# Skip jot's own channel events (avoid echoing GUI posts back as "You — ..."),
+# but pass through other harness channels like tunr/imessage so they show up.
 case "$prompt" in
-  *'<channel source="'*) prompt="" ;;
+  *'<channel source="jot"'*) prompt="" ;;
 esac
 if [ -n "$prompt" ]; then
+  # Detect harness channel events (e.g. tunr screen updates). For those,
+  # extract the source and render with a channel prefix instead of "You".
+  source=$(printf '%s' "$prompt" | sed -n 's/.*<channel source="\([^"]*\)".*/\1/p' | head -n1)
   short=$(printf '%s' "$prompt" | awk 'NR<=2' | tr '\n' ' ' | sed 's/ *$//')
   if [ ${#short} -gt 200 ]; then
     short="${short:0:197}…"
   elif [ "$(printf '%s' "$prompt" | wc -l | tr -d ' ')" -gt 1 ] || [ ${#prompt} -gt ${#short} ]; then
     short="${short}…"
   fi
-  md=$(printf '**You** — %s' "$short")
+  if [ -n "$source" ]; then
+    md=$(printf '**%s** — %s' "$source" "$short")
+  else
+    md=$(printf '**You** — %s' "$short")
+  fi
   printf '%s' "$md" \
     | curl -s --max-time 1 --data-binary @- "$url/$channel/append?internal=1" > /dev/null 2>&1 || true
 fi
