@@ -637,6 +637,39 @@ main {
   animation: pulse 1.4s ease-in-out infinite;
 }
 
+.ephemeral-label {
+  color: var(--muted);
+  display: inline-block;
+}
+.fragment.ephemeral .kata-label {
+  font-family: inherit;
+  font-size: inherit;
+  letter-spacing: normal;
+  line-height: inherit;
+  min-height: 0;
+}
+.fragment.ephemeral .kata-caret {
+  height: 0.8em;
+  transform: translateY(0.1em);
+}
+.ephemeral-anim-pulse { animation: ephemeral-pulse 1.6s ease-in-out infinite; }
+.ephemeral-anim-blink { animation: ephemeral-blink 1.0s steps(2, end) infinite; }
+.ephemeral-anim-shimmer {
+  background: linear-gradient(90deg, var(--muted) 0%, var(--ink) 50%, var(--muted) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ephemeral-shimmer 2.4s linear infinite;
+}
+@keyframes ephemeral-pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.35 } }
+@keyframes ephemeral-blink { 0%, 50% { opacity: 1 } 50.01%, 100% { opacity: 0.2 } }
+@keyframes ephemeral-shimmer { 0% { background-position: 100% 0 } 100% { background-position: -100% 0 } }
+@media (prefers-reduced-motion: reduce) {
+  .ephemeral-anim-pulse, .ephemeral-anim-blink, .ephemeral-anim-shimmer { animation: none; }
+  .ephemeral-anim-shimmer { background: none; -webkit-background-clip: initial; background-clip: initial; color: var(--muted); }
+}
+
 @keyframes katacaret { 0%, 49% { opacity: 1 } 50%, 100% { opacity: 0.2 } }
 .kata-label {
   font-family: var(--mono);

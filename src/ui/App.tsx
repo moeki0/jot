@@ -183,7 +183,7 @@ type Fragment = {
 
 type Event =
   | { type: "fragment"; fragment: Fragment }
-  | { type: "status"; channel: string; status: string | null }
+  | { type: "ephemeral"; channel: string; key: string; markdown: string | null; animation?: string }
   | { type: "awaiting"; id: number; markdown?: string; actions?: GateAction[] }
   | { type: "decided"; id: number; decision: "allow" | "deny"; message?: string };
 
@@ -228,7 +228,7 @@ function useSettings() {
 export function App() {
   const [channel] = useState(getInitialChannel);
   const [fragments, setFragments] = useState<Fragment[]>([]);
-  const [status, setStatus] = useState<string | null>(null);
+  const [ephemerals, setEphemerals] = useState<Record<string, { markdown: string; animation: string }>>({});
   const [unread, setUnread] = useState<Set<number>>(() => new Set());
   const [, setLive] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState<null | "channels" | "settings">(null);
@@ -264,8 +264,13 @@ export function App() {
             if (readyRef.current) {
               setUnread((u) => { const n = new Set(u); n.add(f.id); return n; });
             }
-          } else if (ev.type === "status") {
-            setStatus(ev.status ?? null);
+          } else if (ev.type === "ephemeral") {
+            setEphemerals((prev) => {
+              const next = { ...prev };
+              if (ev.markdown === null) delete next[ev.key];
+              else next[ev.key] = { markdown: ev.markdown, animation: ev.animation ?? "typing" };
+              return next;
+            });
           } else if (ev.type === "awaiting") {
             setFragments((prev) => prev.map((f) =>
               f.id === ev.id ? { ...f, awaiting: true, markdown: ev.markdown ?? f.markdown, actions: ev.actions ?? f.actions } : f
@@ -467,7 +472,8 @@ export function App() {
   const toggleSettings = () => setOverlayOpen((o) => (o === "settings" ? null : "settings"));
 
   const oldestUnread = unread.size ? Math.min(...unread) : null;
-  const showBar = status !== null || unread.size > 0;
+  const ephemeralEntries = Object.entries(ephemerals);
+  const showBar = unread.size > 0;
 
   return (
     <>
@@ -498,6 +504,19 @@ export function App() {
               onDecide={decide}
             />
           ))}
+          {ephemeralEntries.length > 0 && (
+            <article className="fragment ephemeral">
+              <div className="ts" />
+              <div className="body">
+                {ephemeralEntries.map(([key, val], i) => (
+                  <span key={key}>
+                    {i > 0 && " · "}
+                    <EphemeralLabel text={val.markdown} animation={val.animation} />
+                  </span>
+                ))}
+              </div>
+            </article>
+          )}
         </div>
         <Composer onSubmit={submitMessage} channel={channel} />
       </main>
@@ -540,8 +559,6 @@ export function App() {
             else scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
           }}
         >
-          {status && <TypingLabel text={status} />}
-          {status && unread.size > 0 && " · "}
           {unread.size > 0 && `↓ ${unread.size} new`}
         </button>
       )}
@@ -578,6 +595,12 @@ function FragmentView({
       )}
     </article>
   );
+}
+
+function EphemeralLabel({ text, animation }: { text: string; animation: string }) {
+  if (animation === "typing") return <TypingLabel text={text} />;
+  if (animation === "none") return <span className="ephemeral-label">{text}</span>;
+  return <span className={`ephemeral-label ephemeral-anim-${animation}`}>{text}</span>;
 }
 
 function TypingLabel({ text }: { text: string }) {

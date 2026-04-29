@@ -15,9 +15,9 @@ prompt_for_slug=$(echo "$input" | jq -r '.prompt // empty' 2>/dev/null)
 resolve_jot_channel "$session_id" "$prompt_for_slug"
 channel="$JOT_CHANNEL_RESOLVED"
 
-# Set status (cleared automatically when /append fires).
+# Set an ephemeral "thinking" message (cleared by the Stop hook).
 printf '%s' "$label" \
-  | curl -s --max-time 1 --data-binary @- "$url/$channel/status" > /dev/null 2>&1 || true
+  | curl -s --max-time 1 --data-binary @- "$url/$channel/ephemeral?key=thinking" > /dev/null 2>&1 || true
 
 # Post a short version of the prompt as a fragment (first 2 lines, capped at 200 chars).
 prompt=$(echo "$input" | jq -r '.prompt // empty' 2>/dev/null)

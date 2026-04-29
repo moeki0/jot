@@ -17,9 +17,11 @@ type Fragment = {
   actions?: GateAction[];
 };
 
+type EphemeralValue = { markdown: string; animation: string };
+
 type Event =
   | { type: "fragment"; fragment: Fragment }
-  | { type: "status"; channel: string; status: string | null }
+  | { type: "ephemeral"; channel: string; key: string; markdown: string | null; animation?: string }
   | { type: "awaiting"; id: number; markdown?: string; actions?: GateAction[] }
   | { type: "decided"; id: number; decision: "allow" | "deny"; message?: string };
 
@@ -37,7 +39,7 @@ type Gate = {
 };
 
 const channels = new Map<string, Fragment[]>();
-const statusState = new Map<string, string | null>();
+const ephemerals = new Map<string, Map<string, EphemeralValue>>();
 const subscribers = new Map<string, Set<(e: Event) => void>>();
 const pendings = new Map<number, PendingDecision>();
 const gates = new Map<string, Gate>();
@@ -72,10 +74,26 @@ function resolveAwaiting(channel: string, id: number, decision: "allow" | "deny"
   emit(channel, { type: "decided", id, decision, message });
 }
 
-function setStatus(channel: string, status: string | null) {
-  if ((statusState.get(channel) ?? null) === status) return;
-  statusState.set(channel, status);
-  emit(channel, { type: "status", channel, status });
+function setEphemeral(channel: string, key: string, markdown: string | null, animation: string = "typing") {
+  const map = ephemerals.get(channel) ?? new Map<string, EphemeralValue>();
+  if (markdown === null) {
+    if (!map.has(key)) return;
+    map.delete(key);
+  } else {
+    const cur = map.get(key);
+    if (cur && cur.markdown === markdown && cur.animation === animation) return;
+    map.set(key, { markdown, animation });
+  }
+  ephemerals.set(channel, map);
+  emit(channel, { type: "ephemeral", channel, key, markdown, animation });
+}
+
+function clearAllEphemerals(channel: string) {
+  const map = ephemerals.get(channel);
+  if (!map || map.size === 0) return;
+  const keys = [...map.keys()];
+  map.clear();
+  for (const key of keys) emit(channel, { type: "ephemeral", channel, key, markdown: null });
 }
 
 function subscribe(channel: string, cb: (e: Event) => void): () => void {
@@ -382,14 +400,23 @@ export function serve(port: number) {
         return Response.json({ ok: true });
       }
 
-      // POST /:channel/status — set status label (or empty/"off" to clear)
-      const statusMatch = p.match(/^\/([^/]+)\/status$/);
-      if (statusMatch && req.method === "POST") {
-        const channel = decodeURIComponent(statusMatch[1]!);
-        const body = (await req.text()).trim();
-        const cleared = body === "" || body === "off" || body === "0" || body === "false";
-        setStatus(channel, cleared ? null : body);
-        return Response.json({ ok: true, status: cleared ? null : body });
+      // POST /:channel/ephemeral?key=KEY — set or clear an ephemeral message.
+      // Body is Markdown; empty body clears that key. Omitting key clears all
+      // ephemerals for the channel.
+      const ephemeralMatch = p.match(/^\/([^/]+)\/ephemeral$/);
+      if (ephemeralMatch && req.method === "POST") {
+        const channel = decodeURIComponent(ephemeralMatch[1]!);
+        const key = url.searchParams.get("key") ?? "";
+        const animation = url.searchParams.get("animation") ?? "typing";
+        const body = await req.text();
+        const cleared = body.trim() === "";
+        if (!key) {
+          if (cleared) clearAllEphemerals(channel);
+          else return new Response("missing key", { status: 400 });
+        } else {
+          setEphemeral(channel, key, cleared ? null : body, animation);
+        }
+        return Response.json({ ok: true, key, markdown: cleared ? null : body, animation });
       }
 
       // GET /:channel — fragments JSON, or HTML if browser
@@ -432,9 +459,11 @@ export function serve(port: number) {
             for (const f of channels.get(channel) ?? []) {
               safeEnqueue(enc.encode(`data: ${JSON.stringify({ type: "fragment", fragment: f })}\n\n`));
             }
-            const cur = statusState.get(channel);
-            if (cur) {
-              safeEnqueue(enc.encode(`data: ${JSON.stringify({ type: "status", channel, status: cur })}\n\n`));
+            const curMap = ephemerals.get(channel);
+            if (curMap) {
+              for (const [key, val] of curMap) {
+                safeEnqueue(enc.encode(`data: ${JSON.stringify({ type: "ephemeral", channel, key, markdown: val.markdown, animation: val.animation })}\n\n`));
+              }
             }
             unsub = subscribe(channel, (e) => {
               safeEnqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`));

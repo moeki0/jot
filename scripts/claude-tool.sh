@@ -157,7 +157,13 @@ case "$tool" in
     md="> **WebSearch** \`$q\`"
     ;;
   *)
-    md="> **$tool**"
+    args=$(echo "$input" | jq -c '.tool_input // {}')
+    if [ -z "$args" ] || [ "$args" = "{}" ] || [ "$args" = "null" ]; then
+      md="> **$tool**"
+    else
+      pretty=$(echo "$input" | jq '.tool_input')
+      md=$(printf '> **%s**\n\n```json\n%s\n```' "$tool" "$pretty")
+    fi
     ;;
 esac
 
@@ -171,17 +177,8 @@ url="${JOT_URL:-http://localhost:7878}"
 resolve_jot_channel "$session_id"
 channel="$JOT_CHANNEL_RESOLVED"
 
-case "$tool" in
-  Bash) status_label="Execute $(echo "$bash_cmd" | awk '{print $1}' | head -c 18)";;
-  Edit|Write|Read) status_label="$tool $(basename "$fp" 2>/dev/null)";;
-  Glob|Grep) status_label="$tool $pat";;
-  WebFetch) status_label="fetching $(echo "$web_url" | sed -E 's#https?://##' | head -c 18)";;
-  WebSearch) status_label="searching";;
-  *) status_label=$(echo "$tool" | tr '[:upper:]' '[:lower:]');;
-esac
-status_label=$(printf '%s' "$status_label" | head -c 28)
-printf '%s' "$status_label" \
-  | curl -s --max-time 1 --data-binary @- "$url/$channel/status" > /dev/null 2>&1 || true
+# Keep the "Thinking…" ephemeral from UserPromptSubmit visible during tool
+# execution — don't overwrite it with a tool-specific label.
 
 # Allowlisted or no session → post fragment directly and allow.
 # (For gated tools the /gate endpoint posts the fragment itself, so we skip
