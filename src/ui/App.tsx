@@ -18,7 +18,7 @@ import css from "highlight.js/lib/languages/css";
 import scss from "highlight.js/lib/languages/scss";
 import sql from "highlight.js/lib/languages/sql";
 import DOMPurify from "dompurify";
-import { Settings as SettingsIcon } from "lucide-react";
+import { Settings as SettingsIcon, Copy as CopyIcon, Check as CheckIcon } from "lucide-react";
 
 for (const [name, lang] of [
   ["bash", bash], ["javascript", javascript], ["typescript", typescript],
@@ -464,6 +464,14 @@ export function App() {
   }, [fetchChannels]);
 
   const channelButtonRef = useRef<HTMLButtonElement>(null);
+  const [copied, setCopied] = useState(false);
+  const copyChannel = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(channel);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {}
+  }, [channel]);
   const toggleChannels = () => setOverlayOpen((o) => {
     if (o === "channels") return null;
     fetchChannels();
@@ -478,10 +486,15 @@ export function App() {
   return (
     <>
       <header>
-        <button ref={channelButtonRef} className="channel-button" onClick={toggleChannels} aria-haspopup="dialog">
-          <span>{channel}</span>
-          <span className="caret">▾</span>
-        </button>
+        <div className="header-left">
+          <button ref={channelButtonRef} className="channel-button" onClick={toggleChannels} aria-haspopup="dialog">
+            <span>{channel}</span>
+            <span className="caret">▾</span>
+          </button>
+          <button className="icon-button" onClick={copyChannel} aria-label="copy channel id" title="copy channel id">
+            {copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
+          </button>
+        </div>
         <button className="icon-button" onClick={toggleSettings} aria-label="settings">
           <SettingsIcon size={16} />
         </button>

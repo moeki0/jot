@@ -70,6 +70,12 @@ header {
   z-index: 10;
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -516,7 +522,6 @@ nav.channels .count {
   font-size: 11px;
   color: var(--muted);
 }
-
 /* composer — sits inline as the next fragment in the timeline */
 .composer {
   position: relative;
