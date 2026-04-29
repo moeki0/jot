@@ -4,8 +4,9 @@ Post Markdown fragments over HTTP. Read them flowing in your browser.
 
 ```bash
 bun install
-bun start
-# http://localhost:7878/<channel>
+bun start                # http://localhost:7878/<channel>
+# or, for hot-reloading frontend dev:
+bun run dev              # spawns Bun API + Vite (http://localhost:5173)
 ```
 
 Push a fragment:
@@ -30,8 +31,8 @@ Channels are created on first POST. In-memory only — fragments vanish when the
 ## Rendering
 
 - Markdown via `marked`
-- ` ```diff ` and ` ```diff:<lang> ` blocks: red/green per-line, supports `@@` hunk headers; with `:<lang>` the inner code is syntax-highlighted
-- ` ```bash ` (and other languages registered in `public/hljs.js`): syntax-highlighted
+- ` ```diff ` and ` ```diff:<lang> ` blocks: red/green per-line with word-level intra-line highlighting, supports `@@` hunk headers; with `:<lang>` the inner code is syntax-highlighted
+- ` ```bash ` and other languages registered in `src/ui/App.tsx`: syntax-highlighted via highlight.js
 
 ## Claude Code hooks
 
@@ -64,7 +65,53 @@ Both Claude Code and Codex hooks use the shared channel resolver in
 short channel slug; later hooks with the same `session_id` reuse that channel.
 Set `JOT_CHANNEL` to force one fixed channel across all agents.
 
-## Claude Code Channels MCP
+## Claude Code plugin (MCP bridge)
 
-A small MCP server bridges a jot channel into a Claude Code session as a Claude Code Channel: GUI posts arrive as `<channel source="stream-md" ...>` ambient messages, and Claude can post back via the `reply` tool. See `~/.claude/mcp/jot/index.ts` for the implementation.
+This repo ships as a [Claude Code plugin](https://docs.claude.com/en/docs/claude-code/plugins): the plugin's MCP server bridges a jot channel into Claude Code via the experimental `claude/channel` capability. Browser fragments arrive as `<channel source="jot" channel="..." id="..." ts="...">` ambient messages, and Claude replies via the `reply` tool — markdown is appended to the same channel and rendered live in the browser.
+
+### Layout
+
+```
+.claude-plugin/marketplace.json     # local marketplace manifest
+plugins/jot/
+  .claude-plugin/plugin.json        # plugin manifest
+  .mcp.json                         # MCP server registration
+  package.json                      # bun start → server.ts
+  server.ts                         # MCP server (stdio)
+```
+
+### Install as a local plugin
+
+Add this repo as a marketplace, then install the `jot` plugin:
+
+```bash
+# from inside Claude Code
+/plugin marketplace add /path/to/jot
+/plugin install jot@jot
+```
+
+Or from GitHub once published:
+
+```bash
+/plugin marketplace add moeki0/jot
+/plugin install jot@jot
+```
+
+The plugin's `.mcp.json` is auto-loaded when the plugin is enabled — no manual `~/.claude/.mcp.json` edits needed. It runs `bun run --cwd ${CLAUDE_PLUGIN_ROOT} --silent start`, which `bun install`s on first launch and then `bun server.ts`.
+
+### Tools
+
+| Tool | Description |
+|---|---|
+| `reply` | Post a markdown fragment back to the jot channel. Self-posted ids are not redelivered as channel events. |
+| `list_channels` | List jot channels with fragment counts. |
+
+### Configuration
+
+The MCP server reads:
+
+- `JOT_URL` — base URL of the jot HTTP server (default `http://localhost:7878`)
+- `JOT_CHANNEL` — channel name to bridge (default `claude-code`)
+
+Make sure the jot server is running (`bun start`) on the same machine, on the URL the plugin points to.
 
