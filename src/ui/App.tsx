@@ -361,19 +361,16 @@ export function App() {
           body: wrapped,
         }).catch(() => {});
       }
-      // Scroll so the freshly-sent fragment's top sits ~100px below the viewport top.
-      // The new fragment arrives via SSE asynchronously, so wait for the count to
-      // increase, then scroll on the next frame so layout has settled.
+      // Scroll the freshly-sent fragment to ~100px from the viewport top.
+      // The fragment arrives via SSE asynchronously; wait for it then scrollIntoView
+      // (CSS scroll-margin-top on .fragment provides the 100px offset).
       const startCount = document.querySelectorAll(".fragment").length;
       let tries = 0;
       const tick = () => {
         const fragments = document.querySelectorAll<HTMLElement>(".fragment");
         if (fragments.length > startCount) {
           const last = fragments[fragments.length - 1]!;
-          requestAnimationFrame(() => {
-            const offset = last.getBoundingClientRect().top + window.scrollY - 100;
-            window.scrollTo({ top: offset, behavior: "smooth" });
-          });
+          last.scrollIntoView({ behavior: "smooth", block: "start" });
           return;
         }
         if (tries++ > 60) return;

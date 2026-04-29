@@ -178,6 +178,7 @@ main {
   position: relative;
   padding: 24px 0;
   animation: fade-in 260ms ease-out both;
+  scroll-margin-top: 100px;
 }
 
 @media (prefers-reduced-motion: reduce) {
