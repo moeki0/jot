@@ -1,0 +1,17 @@
+{
+  "name": "jot",
+  "description": "jot — stream.md viewer for Claude Code. Fragments stream into a browser timeline; reply from inside Claude.",
+  "owner": {
+    "name": "moeki",
+    "email": "hi@moeki.org"
+  },
+  "plugins": [
+    {
+      "name": "jot",
+      "displayName": "jot",
+      "description": "Bridges a jot channel into Claude Code via the experimental claude/channel capability. Browser fragments arrive as ambient notifications; reply tool posts markdown back.",
+      "version": "0.4.0",
+      "source": "./plugins/jot"
+    }
+  ]
+}

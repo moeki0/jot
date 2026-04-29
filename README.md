@@ -1,4 +1,4 @@
-# stream.md
+# jot
 
 Post Markdown fragments over HTTP. Read them flowing in your browser.
 
@@ -20,14 +20,17 @@ Channels are created on first POST. In-memory only — fragments vanish when the
 
 - `POST /:channel/append` — body is Markdown
 - `POST /:channel/status` — body is a label string ("thinking…", "building…", …); empty/`off`/`0` clears
+- `POST /:channel/permission` — body is Markdown; long-polls until the browser POSTs `/decide/:id`. Response: `{id, decision:"allow"|"deny", message?}` or 408 timeout. Optional `?timeout=ms` (default 600000).
+- `POST /:channel/decide/:id` — body `{decision:"allow"|"deny", message?}`. Browser sends this when the user clicks Allow/Deny.
 - `GET /:channel` — JSON of fragments (HTML if browser)
-- `GET /:channel/stream` — SSE stream of `{type:"fragment"|"status", ...}` events (backlog + live)
+- `GET /:channel/stream` — SSE stream of `{type:"fragment"|"status"|"decided", ...}` events (backlog + live)
+- `GET /:channel/wait?since=<id>&timeout=<ms>` — long-poll for the next non-internal fragment (used by the MCP bridge).
 - `GET /channels` — list with counts
 
 ## Rendering
 
 - Markdown via `marked`
-- ` ```diff ` blocks: red/green per-line, supports `@@` hunk headers (use `diff -u`)
+- ` ```diff ` and ` ```diff:<lang> ` blocks: red/green per-line, supports `@@` hunk headers; with `:<lang>` the inner code is syntax-highlighted
 - ` ```bash ` (and other languages registered in `public/hljs.js`): syntax-highlighted
 
 ## Claude Code hooks
@@ -46,19 +49,22 @@ Add to `~/.claude/settings.json`:
 ```json
 {
   "hooks": {
-    "UserPromptSubmit": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/stream.md/scripts/claude-typing.sh" }] }],
-    "Stop":             [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/stream.md/scripts/claude-hook.sh"   }] }],
-    "PreToolUse":       [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/stream.md/scripts/claude-tool.sh"   }] }],
-    "Notification":     [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/stream.md/scripts/claude-notify.sh" }] }]
+    "UserPromptSubmit": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/jot/scripts/claude-typing.sh" }] }],
+    "Stop":             [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/jot/scripts/claude-hook.sh"   }] }],
+    "PreToolUse":       [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/jot/scripts/claude-tool.sh"   }] }],
+    "Notification":     [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/jot/scripts/claude-notify.sh" }] }]
   }
 }
 ```
 
-Override the channel or label via env: `STREAM_MD_URL`, `STREAM_MD_CHANNEL`, `STREAM_MD_STATUS`.
+Override the channel or label via env: `JOT_URL`, `JOT_CHANNEL`, `JOT_STATUS`.
 
-## UI
+Both Claude Code and Codex hooks use the shared channel resolver in
+`scripts/_jot-channel.sh`. By default, the first prompt of a session becomes a
+short channel slug; later hooks with the same `session_id` reuse that channel.
+Set `JOT_CHANNEL` to force one fixed channel across all agents.
 
-- No auto-scroll. New fragments appear at the bottom; the page stays where you were reading.
-- Bottom pill shows status (e.g. `thinking…`) and unread count (`↓ N new`); click to jump to the oldest unread.
-- Fragments fade in. Once a fragment scrolls past the viewport's bottom edge, it counts as read.
-- Channel switcher: header button or `Cmd/Ctrl+K`.
+## Claude Code Channels MCP
+
+A small MCP server bridges a jot channel into a Claude Code session as a Claude Code Channel: GUI posts arrive as `<channel source="stream-md" ...>` ambient messages, and Claude can post back via the `reply` tool. See `~/.claude/mcp/jot/index.ts` for the implementation.
+

@@ -1,0 +1,14 @@
+{
+  "name": "jot-plugin",
+  "version": "0.4.0",
+  "private": true,
+  "scripts": {
+    "start": "bun install --no-summary && bun server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
