@@ -24,10 +24,40 @@ async function readStdin(): Promise<string> {
   return await Bun.stdin.text();
 }
 
+const HELP = `jot — channel-based jot/notes server
+
+Usage:
+  jot [serve]                       Start the HTTP server (default port 7878, override with PORT)
+  jot append <channel>              Append stdin as a message to <channel>
+  jot ephemeral <channel> [key]     Post stdin as an ephemeral message; [key] replaces prior value
+  jot signal <channel> <key>        Fire a signal on <channel>/<key>
+  jot claude hook <name>            Run a Claude Code hook handler
+                                    <name>: stop | user-prompt | tool | notify | session-start
+  jot help, -h, --help              Show this help
+  jot version, -v, --version        Show version
+
+Environment:
+  PORT       Port for \`jot serve\` (default 7878)
+  JOT_URL    Base URL for client commands (default http://localhost:7878)
+`;
+
 const argv = process.argv.slice(2);
 const cmd = argv[0];
 
 switch (cmd) {
+  case "help":
+  case "-h":
+  case "--help": {
+    console.log(HELP);
+    break;
+  }
+  case "version":
+  case "-v":
+  case "--version": {
+    const pkg = await import("../package.json");
+    console.log((pkg as any).default?.version ?? (pkg as any).version);
+    break;
+  }
   case undefined:
   case "serve": {
     const port = Number(process.env.PORT ?? 7878);
@@ -72,5 +102,7 @@ switch (cmd) {
     break;
   }
   default:
-    die(`jot: unknown command '${cmd}'`);
+    console.error(`jot: unknown command '${cmd}'\n`);
+    console.error(HELP);
+    process.exit(2);
 }
