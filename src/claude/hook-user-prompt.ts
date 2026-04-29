@@ -11,6 +11,7 @@ export async function hookUserPrompt() {
 
   let prompt = input.prompt ?? "";
   if (prompt.includes('<channel source="jot"')) prompt = "";
+  if (prompt.includes('<channel source="plugin:jot:jot"')) prompt = "";
   if (!prompt) return;
 
   const sourceMatch = prompt.match(/<channel source="([^"]+)"/);
