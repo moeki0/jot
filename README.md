@@ -5,6 +5,15 @@
 
 Post Markdown fragments over HTTP. Read them flowing in your browser.
 
+Install via Homebrew:
+
+```bash
+brew install moeki0/jot/jot
+jot                      # http://localhost:7878/<channel>  (same as `jot serve`)
+```
+
+Or from source:
+
 ```bash
 bun install
 npm link                 # exposes the `jot` CLI on PATH
