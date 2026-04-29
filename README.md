@@ -120,6 +120,12 @@ From inside Claude Code:
 
 The plugin's `.mcp.json` is auto-loaded when the plugin is enabled — no manual `~/.claude/.mcp.json` edits needed. It runs `bun run --cwd ${CLAUDE_PLUGIN_ROOT} --silent start`, which `bun install`s on first launch and then `bun server.ts`.
 
+To start Claude Code with the jot channel bridge enabled (experimental `claude/channel` capability):
+
+```bash
+claude --dangerously-load-development-channels server:plugin:jot:jot
+```
+
 ### Tools
 
 | Tool | Description |
