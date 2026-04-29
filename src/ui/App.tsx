@@ -361,13 +361,28 @@ export function App() {
           body: wrapped,
         }).catch(() => {});
       }
-      requestAnimationFrame(() => {
-        const composer = document.querySelector(".composer") as HTMLElement | null;
-        if (composer) {
-          const offset = composer.getBoundingClientRect().top + window.scrollY - 16;
+      // Scroll so the freshly-sent fragment's top sits ~100px below the viewport top.
+      // The new fragment arrives via SSE asynchronously, so poll for up to ~600ms.
+      const scrollToNewest = () => {
+        const fragments = document.querySelectorAll<HTMLElement>(".fragment");
+        const last = fragments[fragments.length - 1];
+        if (last) {
+          const offset = last.getBoundingClientRect().top + window.scrollY - 100;
           window.scrollTo({ top: offset, behavior: "smooth" });
         }
-      });
+      };
+      const startCount = document.querySelectorAll(".fragment").length;
+      let tries = 0;
+      const tick = () => {
+        const now = document.querySelectorAll(".fragment").length;
+        if (now > startCount || tries > 30) {
+          scrollToNewest();
+          return;
+        }
+        tries++;
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
       return true;
     } catch {
       return false;
