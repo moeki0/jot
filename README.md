@@ -1,6 +1,6 @@
 # jot
 
-[![Image from Gyazo](https://i.gyazo.com/da2dbe405d4edf8d9b310f043c7edc95.png)](https://gyazo.com/da2dbe405d4edf8d9b310f043c7edc95)
+[![Image from Gyazo](https://i.gyazo.com/11149fd588bb11f7fde05276cfab49af.jpg)](https://gyazo.com/11149fd588bb11f7fde05276cfab49af)
 
 
 Post Markdown fragments over HTTP. Read them flowing in your browser.
