@@ -80,19 +80,11 @@ plugins/jot/
   server.ts                         # MCP server (stdio)
 ```
 
-### Install as a local plugin
+### Install
 
-Add this repo as a marketplace, then install the `jot` plugin:
+From inside Claude Code:
 
-```bash
-# from inside Claude Code
-/plugin marketplace add /path/to/jot
-/plugin install jot@jot
 ```
-
-Or from GitHub once published:
-
-```bash
 /plugin marketplace add moeki0/jot
 /plugin install jot@jot
 ```
