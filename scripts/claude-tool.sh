@@ -183,12 +183,12 @@ status_label=$(printf '%s' "$status_label" | head -c 28)
 printf '%s' "$status_label" \
   | curl -s --max-time 1 --data-binary @- "$url/$channel/status" > /dev/null 2>&1 || true
 
-# Always post the tool fragment to jot so the timeline shows what's running.
-printf '%s' "$md" \
-  | curl -s --max-time 1 --data-binary @- "$url/$channel/append?internal=1" > /dev/null 2>&1 || true
-
-# Allowlisted or no session → no gate, just allow.
+# Allowlisted or no session → post fragment directly and allow.
+# (For gated tools the /gate endpoint posts the fragment itself, so we skip
+# this append to avoid duplicates.)
 if [ "$allowlisted" = "1" ] || [ -z "$session_id" ]; then
+  printf '%s' "$md" \
+    | curl -s --max-time 1 --data-binary @- "$url/$channel/append?internal=1" > /dev/null 2>&1 || true
   printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
   exit 0
 fi
