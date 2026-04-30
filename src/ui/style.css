@@ -360,10 +360,17 @@ th {
   text-align: left;
   cursor: pointer;
   transition: background 240ms ease, opacity 240ms ease, border-color 240ms ease;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
-.question-button:hover:not(:disabled) {
+.question-button:not(.picked):hover:not(:disabled) {
   background: color-mix(in oklch, var(--ink) 3%, var(--bg));
+}
+
+.question-button.picked:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--bg) 12%, var(--accent));
 }
 
 
@@ -404,7 +411,9 @@ th {
 
 .question-label {
   font-weight: 600;
-  flex-shrink: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .question-desc {
@@ -433,6 +442,30 @@ th {
 
 .question-free-input:disabled {
   opacity: 0.4;
+  cursor: default;
+}
+
+.question-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.5em;
+}
+
+.question-submit {
+  padding: 0.4em 0.9em;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--bg);
+  font: inherit;
+  font-size: 0.85em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 240ms ease;
+}
+
+.question-submit:disabled {
+  opacity: 0.35;
   cursor: default;
 }
 

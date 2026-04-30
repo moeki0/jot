@@ -744,34 +744,46 @@ function QuestionCard({ prompt, options, chosenLabel, onPick }: {
   chosenLabel: string | null;
   onPick: (label: string, message: string) => void;
 }) {
-  const chosen = chosenLabel;
+  const submitted = chosenLabel != null;
+  const [picked, setPicked] = useState<Set<number>>(new Set());
   const [freeText, setFreeText] = useState("");
   const promptHtml = useMemo(() => prompt ? renderMarkdown(prompt) : "", [prompt]);
-  const choose = (opt: QuestionOption) => {
-    if (chosen) return;
-    const isEnumerated = opt.label.startsWith("Option ") || opt.label.startsWith("選択肢 ");
-    const primary = isEnumerated && opt.description ? opt.description : opt.label;
-    const message = prompt
-      ? `> ${prompt.split("\n").join("\n> ")}\n\n${primary}`
-      : primary;
-    onPick(opt.label, message);
+  const toggle = (idx: number) => {
+    if (submitted) return;
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
   };
-  const submitFree = () => {
-    if (chosen) return;
-    const text = freeText.trim();
-    if (!text) return;
+  const submit = () => {
+    if (submitted) return;
+    const selected = [...picked].sort((a, b) => a - b).flatMap((i) => {
+      const o = options[i];
+      if (!o) return [];
+      const isEnumerated = o.label.startsWith("Option ") || o.label.startsWith("選択肢 ");
+      return [isEnumerated && o.description ? o.description : o.label];
+    });
+    const free = freeText.trim();
+    const parts: string[] = [];
+    if (selected.length === 1 && !free) parts.push(selected[0]!);
+    else if (selected.length > 0) parts.push(selected.map((s) => `- ${s}`).join("\n"));
+    if (free) parts.push(free);
+    if (parts.length === 0) return;
+    const body = parts.join("\n\n");
     const message = prompt
-      ? `> ${prompt.split("\n").join("\n> ")}\n\n${text}`
-      : text;
-    onPick(text, message);
+      ? `> ${prompt.split("\n").join("\n> ")}\n\n${body}`
+      : body;
+    const label = selected.length > 0 ? selected.join(", ") + (free ? ` / ${free}` : "") : free;
+    onPick(label, message);
   };
+  const canSubmit = !submitted && (picked.size > 0 || freeText.trim().length > 0);
   return (
     <div className="question-card">
       {prompt && <div className="question-prompt" dangerouslySetInnerHTML={{ __html: promptHtml }} />}
       <div className="question-options">
         {options.map((o, i) => {
-          const picked = chosen === o.label;
-          const dimmed = chosen != null && !picked;
+          const isPicked = picked.has(i);
           const isEnumerated = o.label.startsWith("Option ") || o.label.startsWith("選択肢 ");
           const badge = isEnumerated ? o.label.split(" ").slice(1).join(" ") : null;
           const primary = isEnumerated && o.description ? o.description : o.label;
@@ -780,9 +792,9 @@ function QuestionCard({ prompt, options, chosenLabel, onPick }: {
             <button
               key={i}
               type="button"
-              className={`question-button ${picked ? "picked" : ""} ${dimmed ? "dimmed" : ""}`}
-              onClick={() => choose(o)}
-              disabled={chosen != null}
+              className={`question-button ${isPicked ? "picked" : ""} ${submitted && !isPicked ? "dimmed" : ""}`}
+              onClick={() => toggle(i)}
+              disabled={submitted}
               title={isEnumerated ? o.label : o.description}
             >
               {badge && <span className="question-badge">{badge}</span>}
@@ -799,9 +811,24 @@ function QuestionCard({ prompt, options, chosenLabel, onPick }: {
           placeholder="or type a free-form answer…"
           value={freeText}
           onChange={(e) => setFreeText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") submitFree(); }}
-          disabled={chosen != null}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            if (e.nativeEvent.isComposing) return;
+            e.preventDefault();
+            submit();
+          }}
+          disabled={submitted}
         />
+      </div>
+      <div className="question-actions">
+        <button
+          type="button"
+          className="question-submit"
+          onClick={submit}
+          disabled={!canSubmit}
+        >
+          送信
+        </button>
       </div>
     </div>
   );
