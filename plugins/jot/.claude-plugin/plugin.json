@@ -1,6 +1,6 @@
 {
   "name": "jot",
   "description": "Bridges a jot channel into Claude Code via the experimental claude/channel capability. Browser fragments arrive as ambient notifications; reply tool posts markdown back.",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "keywords": ["stream", "markdown", "channel", "viewer", "jot"]
 }
