@@ -40,6 +40,18 @@ Usage:
                                     Announces a "cc" namespace and runs one
                                     persistent \`claude -p\` per cc/* channel.
                                     Extra args are forwarded to claude.
+  jot codex bridge [opts]           Start the persistent codex-bridge daemon.
+                                    Announces a "cx" namespace and runs a
+                                    shared \`codex app-server\` with one Thread
+                                    per cx/* channel. Approvals are routed to
+                                    jot's Permission UI.
+                                    Options:
+                                      --model <name>              e.g. gpt-5
+                                      --approval <policy>         untrusted | on-failure | on-request | never
+                                      --sandbox <mode>            read-only | workspace-write | danger-full-access
+                                      --cwd <path>                working directory for codex
+                                      --reasoning-effort <level>  low | medium | high
+                                    Each flag also has a CODEX_<UPPER> env var.
   jot help, -h, --help              Show this help
   jot version, -v, --version        Show version
 
@@ -105,6 +117,14 @@ switch (cmd) {
     } catch {}
     console.log(channel);
     break;
+  }
+  case "codex": {
+    if (argv[1] === "bridge") {
+      const m = await import("./codex/bridge");
+      await m.runCodexBridge(argv.slice(2));
+      break;
+    }
+    die("usage: jot codex bridge [...args]");
   }
   case "claude": {
     if (argv[1] === "bridge") {
