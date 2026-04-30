@@ -324,6 +324,29 @@ th {
   word-break: break-word;
 }
 
+.points-card {
+  margin: 0.6em 0;
+  padding-left: 1.4em;
+  list-style: disc;
+}
+
+.points-item {
+  margin: 0.3em 0;
+}
+
+.points-title {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.points-desc {
+  color: var(--ink);
+  margin-top: 0.1em;
+}
+
+.points-desc :first-child { margin-top: 0; }
+.points-desc :last-child { margin-bottom: 0; }
+
 .question-card {
   border: 1px solid var(--rule);
   border-radius: 8px;

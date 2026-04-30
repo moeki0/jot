@@ -168,12 +168,15 @@ function parseBashToolCall(md: string): { command: string } | null {
 }
 
 const QUESTION_ITEM_RE = /^\s*[-*]\s+(?:(Option|選択肢)\s+(\S+):\s*(.+)|(Yes|No|はい|いいえ)(?::\s*(.+))?)\s*$/;
+const POINTS_ITEM_RE = /^\s*[-*]\s+\*\*(.+?)\*\*\s*(?:[—–:\-]|\s—|\s-)\s+(.+)$/;
 
 type QuestionOption = { label: string; description?: string };
+type PointItem = { title: string; description: string };
 
 type Segment =
   | { kind: "text"; markdown: string }
-  | { kind: "question"; prompt: string; options: QuestionOption[] };
+  | { kind: "question"; prompt: string; options: QuestionOption[] }
+  | { kind: "points"; items: PointItem[] };
 
 function parseSegments(md: string): Segment[] {
   const lines = md.split("\n");
@@ -218,6 +221,18 @@ function parseSegments(md: string): Segment[] {
           return { label: yesNoKw!, description: ynDesc };
         });
         segments.push({ kind: "question", prompt: promptLines.join("\n").trim(), options });
+        i = listEnd;
+        textStart = i;
+        continue;
+      }
+      const pointMatches = items.map((l) => l.match(POINTS_ITEM_RE));
+      if (pointMatches.length >= 2 && pointMatches.every(Boolean)) {
+        flushText(i);
+        const pts: PointItem[] = pointMatches.map((m) => ({
+          title: m![1]!.trim(),
+          description: m![2]!.trim(),
+        }));
+        segments.push({ kind: "points", items: pts });
         i = listEnd;
         textStart = i;
         continue;
@@ -686,7 +701,7 @@ function FragmentView({
   const segments = useMemo(() => {
     if (bashCall) return null;
     const segs = parseSegments(fragment.markdown);
-    return segs.some((s) => s.kind === "question") ? segs : null;
+    return segs.some((s) => s.kind === "question" || s.kind === "points") ? segs : null;
   }, [fragment.markdown, bashCall]);
   const html = useMemo(
     () => (bashCall || segments) ? "" : renderMarkdown(fragment.markdown),
@@ -726,6 +741,8 @@ function FragmentView({
               chosenLabel={answers.get(i)?.label ?? null}
               onPick={(label, message) => onPick(i, label, message)}
             />
+          ) : s.kind === "points" ? (
+            <PointsCard key={i} items={s.items} />
           ) : (
             <div key={i} dangerouslySetInnerHTML={{ __html: renderMarkdown(s.markdown) }} />
           ))}
@@ -795,7 +812,6 @@ function QuestionCard({ prompt, options, chosenLabel, onPick }: {
               className={`question-button ${isPicked ? "picked" : ""} ${submitted && !isPicked ? "dimmed" : ""}`}
               onClick={() => toggle(i)}
               disabled={submitted}
-              title={isEnumerated ? o.label : o.description}
             >
               {badge && <span className="question-badge">{badge}</span>}
               <span className="question-label">{primary}</span>
@@ -831,6 +847,26 @@ function QuestionCard({ prompt, options, chosenLabel, onPick }: {
         </button>
       </div>
     </div>
+  );
+}
+
+function PointsCard({ items }: { items: PointItem[] }) {
+  return (
+    <ul className="points-card">
+      {items.map((it, i) => <PointsItem key={i} item={it} />)}
+    </ul>
+  );
+}
+
+function PointsItem({ item }: { item: PointItem }) {
+  const stripP = (html: string) => html.replace(/^<p>([\s\S]*?)<\/p>\s*$/, "$1");
+  const titleHtml = useMemo(() => stripP(renderMarkdown(item.title)), [item.title]);
+  const descHtml = useMemo(() => stripP(renderMarkdown(item.description)), [item.description]);
+  return (
+    <li className="points-item">
+      <span className="points-title" dangerouslySetInnerHTML={{ __html: titleHtml }} />
+      <div className="points-desc" dangerouslySetInnerHTML={{ __html: descHtml }} />
+    </li>
   );
 }
 
