@@ -14,7 +14,13 @@ const mcp = new Server(
     instructions:
       `Messages from the jot ${CHANNEL} channel arrive as <channel source="jot" channel="..." id="..." ts="...">. ` +
       `Anything posted via the browser composer or any HTTP client to /:channel/append shows up here. ` +
-      `Your replies are posted back automatically by the jot Stop hook — there is no reply tool.`,
+      `Your replies are posted back automatically by the jot Stop hook — there is no reply tool.\n\n` +
+      `When you want to ask the user a multiple-choice question, write a plain bullet list where every item ` +
+      `is one of: \`- Option <id>: <text>\`, \`- 選択肢 <id>: <text>\`, \`- Yes\` / \`- Yes: <text>\`, \`- No\` / \`- No: <text>\`, ` +
+      `\`- はい\` / \`- はい: <text>\`, \`- いいえ\` / \`- いいえ: <text>\`. ` +
+      `Put an optional question paragraph immediately above the list. The list will render as clickable buttons ` +
+      `in the jot UI, and the user's selection will arrive as your next user prompt. ` +
+      `End your turn after writing the list — do not call any tool.`,
   },
 );
 

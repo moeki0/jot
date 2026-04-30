@@ -71,6 +71,8 @@ Channel paths support slash-separated namespaces, e.g. `cc/abc`. Namespaces can 
 - Markdown via `marked`
 - ` ```diff ` and ` ```diff:<lang> ` blocks: red/green per-line with word-level intra-line highlighting, supports `@@` hunk headers; with `:<lang>` the inner code is syntax-highlighted
 - ` ```bash ` and other languages registered in `src/ui/App.tsx`: syntax-highlighted via highlight.js
+- Bash tool-call fragments (`> **Bash**` followed by a `bash` code block — produced by `jot claude hook tool`) render as a collapsible card showing the first line as preview; click to expand the full command
+- Question lists render as clickable buttons. A bullet list whose every item matches one of `- Option <id>: <text>`, `- 選択肢 <id>: <text>`, `- Yes` / `- Yes: <text>`, `- No` / `- No: <text>`, `- はい` / `- はい: <text>`, `- いいえ` / `- いいえ: <text>` becomes a question card. The paragraph immediately before the list is shown as the prompt. When all question lists in a fragment have been answered, the combined choices are posted as the next user prompt (`> prompt\n\nanswer` separated by `---`).
 
 ## Claude Code hooks
 

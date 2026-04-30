@@ -161,6 +161,77 @@ marked.use({
   },
 });
 
+function parseBashToolCall(md: string): { command: string } | null {
+  const m = md.match(/^> \*\*Bash\*\*\s*\n\n```bash\n([\s\S]*?)\n```\s*$/);
+  if (!m) return null;
+  return { command: m[1]! };
+}
+
+const QUESTION_ITEM_RE = /^\s*[-*]\s+(?:(Option|選択肢)\s+(\S+):\s*(.+)|(Yes|No|はい|いいえ)(?::\s*(.+))?)\s*$/;
+
+type QuestionOption = { label: string; description?: string };
+
+type Segment =
+  | { kind: "text"; markdown: string }
+  | { kind: "question"; prompt: string; options: QuestionOption[] };
+
+function parseSegments(md: string): Segment[] {
+  const lines = md.split("\n");
+  const segments: Segment[] = [];
+  let i = 0;
+  let textStart = 0;
+
+  const flushText = (upto: number) => {
+    const slice = lines.slice(textStart, upto).join("\n");
+    if (slice.trim() !== "") segments.push({ kind: "text", markdown: slice });
+  };
+
+  while (i < lines.length) {
+    if (/^\s*[-*]\s/.test(lines[i]!)) {
+      let listEnd = i;
+      while (listEnd < lines.length && /^\s*[-*]\s/.test(lines[listEnd]!)) listEnd++;
+      const items = lines.slice(i, listEnd);
+      const matches = items.map((l) => l.match(QUESTION_ITEM_RE));
+      if (matches.every(Boolean)) {
+        // Extract trailing paragraph from preceding text as prompt
+        const preceding = lines.slice(textStart, i);
+        let promptStart = preceding.length;
+        let sawContent = false;
+        for (let j = preceding.length - 1; j >= 0; j--) {
+          if (preceding[j]!.trim() === "") {
+            if (sawContent) break;
+            continue;
+          }
+          sawContent = true;
+          promptStart = j;
+        }
+        const beforeText = preceding.slice(0, promptStart).join("\n");
+        if (beforeText.trim() !== "") segments.push({ kind: "text", markdown: beforeText });
+        const promptLines = preceding.slice(promptStart).filter((l) => l.trim() !== "");
+        const options: QuestionOption[] = matches.map((m) => {
+          const optKw = m![1];
+          const id = m![2];
+          const optDesc = m![3];
+          const yesNoKw = m![4];
+          const ynDesc = m![5];
+          if (optKw) return { label: `${optKw} ${id}`, description: optDesc };
+          return { label: yesNoKw!, description: ynDesc };
+        });
+        segments.push({ kind: "question", prompt: promptLines.join("\n").trim(), options });
+        i = listEnd;
+        textStart = i;
+        continue;
+      }
+      i = listEnd;
+      continue;
+    }
+    i++;
+  }
+
+  flushText(lines.length);
+  return segments;
+}
+
 function renderMarkdown(md: string): string {
   const dirty = marked.parse(md, { async: false }) as string;
   return DOMPurify.sanitize(dirty, {
@@ -238,7 +309,19 @@ export function App() {
   const fragmentRefs = useRef(new Map<number, HTMLElement>());
   const seenRef = useRef(new Set<number>());
   const readyRef = useRef(false);
+  const didInitialScrollRef = useRef(false);
   const settings = useSettings();
+
+  const markReady = () => {
+    if (readyRef.current) return;
+    readyRef.current = true;
+    if (!didInitialScrollRef.current) {
+      didInitialScrollRef.current = true;
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "auto" });
+      });
+    }
+  };
 
   // SSE connection
   useEffect(() => {
@@ -253,7 +336,7 @@ export function App() {
       es.onopen = () => {
         setLive(true);
         if (backlogTimer) clearTimeout(backlogTimer);
-        backlogTimer = setTimeout(() => { readyRef.current = true; }, 250);
+        backlogTimer = setTimeout(markReady, 250);
       };
       es.onmessage = (e) => {
         try {
@@ -283,7 +366,7 @@ export function App() {
             ));
           }
           if (backlogTimer) clearTimeout(backlogTimer);
-          backlogTimer = setTimeout(() => { readyRef.current = true; }, 250);
+          backlogTimer = setTimeout(markReady, 250);
         } catch {}
       };
       es.onerror = () => {
@@ -350,7 +433,7 @@ export function App() {
   }, [channel]);
 
   const INGEST_CHANNEL = "claude-code";
-  const submitMessage = useCallback(async (md: string) => {
+  const submitMessage = useCallback<(md: string) => Promise<boolean>>(async (md: string) => {
     if (!md.trim()) return false;
     try {
       await fetch(`/${chPath(channel)}/append`, {
@@ -517,6 +600,7 @@ export function App() {
                 else fragmentRefs.current.delete(id);
               }}
               onDecide={decide}
+              onChoice={submitMessage}
             />
           ))}
           {ephemeralEntries.length > 0 && (
@@ -585,10 +669,12 @@ function FragmentView({
   fragment,
   registerRef,
   onDecide,
+  onChoice,
 }: {
   fragment: Fragment;
   registerRef: (id: number, el: HTMLElement | null) => void;
   onDecide: (id: number, payload: { value: string; [k: string]: unknown } | { actionIndex: number }) => void;
+  onChoice: (md: string) => Promise<boolean>;
 }) {
   const ref = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -596,14 +682,154 @@ function FragmentView({
     return () => registerRef(fragment.id, null);
   }, [fragment.id, registerRef]);
 
-  const html = useMemo(() => renderMarkdown(fragment.markdown), [fragment.markdown]);
+  const bashCall = useMemo(() => parseBashToolCall(fragment.markdown), [fragment.markdown]);
+  const segments = useMemo(() => {
+    if (bashCall) return null;
+    const segs = parseSegments(fragment.markdown);
+    return segs.some((s) => s.kind === "question") ? segs : null;
+  }, [fragment.markdown, bashCall]);
+  const html = useMemo(
+    () => (bashCall || segments) ? "" : renderMarkdown(fragment.markdown),
+    [fragment.markdown, bashCall, segments],
+  );
+
+  const questionCount = segments?.filter((s) => s.kind === "question").length ?? 0;
+  const [answers, setAnswers] = useState<Map<number, { label: string; message: string }>>(new Map());
+  const onPick = useCallback((segIdx: number, label: string, message: string) => {
+    setAnswers((prev) => {
+      if (prev.has(segIdx)) return prev;
+      const next = new Map(prev);
+      next.set(segIdx, { label, message });
+      if (next.size === questionCount) {
+        const combined = [...next.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([, v]) => v.message)
+          .join("\n\n---\n\n");
+        void onChoice(combined);
+      }
+      return next;
+    });
+  }, [questionCount, onChoice]);
 
   return (
     <article className="fragment" data-id={fragment.id} ref={ref as any}>
       <div className="ts">{fmtTime(fragment.ts)}</div>
-      <div className="body" dangerouslySetInnerHTML={{ __html: html }} />
+      {bashCall ? (
+        <div className="body"><ToolCallCard name="Bash" command={bashCall.command} /></div>
+      ) : segments ? (
+        <div className="body">
+          {segments.map((s, i) => s.kind === "question" ? (
+            <QuestionCard
+              key={i}
+              prompt={s.prompt}
+              options={s.options}
+              chosenLabel={answers.get(i)?.label ?? null}
+              onPick={(label, message) => onPick(i, label, message)}
+            />
+          ) : (
+            <div key={i} dangerouslySetInnerHTML={{ __html: renderMarkdown(s.markdown) }} />
+          ))}
+        </div>
+      ) : (
+        <div className="body" dangerouslySetInnerHTML={{ __html: html }} />
+      )}
       {fragment.awaiting && <PermissionBox actions={fragment.actions} onDecide={(p) => onDecide(fragment.id, p)} />}
     </article>
+  );
+}
+
+function QuestionCard({ prompt, options, chosenLabel, onPick }: {
+  prompt: string;
+  options: QuestionOption[];
+  chosenLabel: string | null;
+  onPick: (label: string, message: string) => void;
+}) {
+  const chosen = chosenLabel;
+  const [freeText, setFreeText] = useState("");
+  const promptHtml = useMemo(() => prompt ? renderMarkdown(prompt) : "", [prompt]);
+  const choose = (opt: QuestionOption) => {
+    if (chosen) return;
+    const isEnumerated = opt.label.startsWith("Option ") || opt.label.startsWith("選択肢 ");
+    const primary = isEnumerated && opt.description ? opt.description : opt.label;
+    const message = prompt
+      ? `> ${prompt.split("\n").join("\n> ")}\n\n${primary}`
+      : primary;
+    onPick(opt.label, message);
+  };
+  const submitFree = () => {
+    if (chosen) return;
+    const text = freeText.trim();
+    if (!text) return;
+    const message = prompt
+      ? `> ${prompt.split("\n").join("\n> ")}\n\n${text}`
+      : text;
+    onPick(text, message);
+  };
+  return (
+    <div className="question-card">
+      {prompt && <div className="question-prompt" dangerouslySetInnerHTML={{ __html: promptHtml }} />}
+      <div className="question-options">
+        {options.map((o, i) => {
+          const picked = chosen === o.label;
+          const dimmed = chosen != null && !picked;
+          const isEnumerated = o.label.startsWith("Option ") || o.label.startsWith("選択肢 ");
+          const badge = isEnumerated ? o.label.split(" ").slice(1).join(" ") : null;
+          const primary = isEnumerated && o.description ? o.description : o.label;
+          const subtitle = isEnumerated ? null : o.description;
+          return (
+            <button
+              key={i}
+              type="button"
+              className={`question-button ${picked ? "picked" : ""} ${dimmed ? "dimmed" : ""}`}
+              onClick={() => choose(o)}
+              disabled={chosen != null}
+              title={isEnumerated ? o.label : o.description}
+            >
+              {badge && <span className="question-badge">{badge}</span>}
+              <span className="question-label">{primary}</span>
+              {subtitle && <span className="question-desc">{subtitle}</span>}
+            </button>
+          );
+        })}
+      </div>
+      <div className="question-free">
+        <input
+          type="text"
+          className="question-free-input"
+          placeholder="or type a free-form answer…"
+          value={freeText}
+          onChange={(e) => setFreeText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") submitFree(); }}
+          disabled={chosen != null}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ToolCallCard({ name, command }: { name: string; command: string }) {
+  const [open, setOpen] = useState(false);
+  const firstLine = command.split("\n")[0] ?? "";
+  const previewSrc = firstLine.length > 200 ? firstLine.slice(0, 199) + "…" : firstLine;
+  const previewHtml = useMemo(
+    () => hljs.highlight(previewSrc, { language: "bash", ignoreIllegals: true }).value,
+    [previewSrc],
+  );
+  const fullHtml = useMemo(
+    () => hljs.highlight(command, { language: "bash", ignoreIllegals: true }).value,
+    [command],
+  );
+  return (
+    <div className={`tool-call ${open ? "open" : ""}`}>
+      <button type="button" className="tool-call-head" onClick={() => setOpen((o) => !o)}>
+        <span className="tool-call-caret">{open ? "▾" : "▸"}</span>
+        <span className="tool-call-name">{name}</span>
+        <code className="tool-call-preview hljs language-bash" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+      </button>
+      {open && (
+        <pre className="tool-call-body"><code className="hljs language-bash" dangerouslySetInnerHTML={{ __html: fullHtml }} /></pre>
+      )}
+    </div>
   );
 }
 
