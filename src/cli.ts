@@ -52,6 +52,10 @@ Usage:
                                       --cwd <path>                working directory for codex
                                       --reasoning-effort <level>  low | medium | high
                                     Each flag also has a CODEX_<UPPER> env var.
+  jot pi bridge [opts]              Start the persistent pi-bridge daemon.
+                                    Announces a "pi" namespace and runs one
+                                    \`pi --mode rpc\` per pi/* channel.
+                                    Options: --cwd <path>, --bin <path>, -- ...pi args
   jot help, -h, --help              Show this help
   jot version, -v, --version        Show version
 
@@ -125,6 +129,14 @@ switch (cmd) {
       break;
     }
     die("usage: jot codex bridge [...args]");
+  }
+  case "pi": {
+    if (argv[1] === "bridge") {
+      const m = await import("./pi/bridge");
+      await m.runPiBridge(argv.slice(2));
+      break;
+    }
+    die("usage: jot pi bridge [...args]");
   }
   case "claude": {
     if (argv[1] === "bridge") {
