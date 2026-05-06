@@ -9,7 +9,7 @@ const chPath = (ch: string) => ch.split("/").map(encodeURIComponent).join("/");
 
 type Session = {
   proc: ReturnType<typeof Bun.spawn>;
-  stdin: WritableStreamDefaultWriter<Uint8Array>;
+  stdin: ReturnType<typeof Bun.spawn>["stdin"];
   nextId: number;
   lastAssistant: string;
 };
@@ -53,7 +53,8 @@ function contentToMarkdown(content: any): string {
 }
 
 async function writeJson(session: Session, obj: any) {
-  await session.stdin.write(new TextEncoder().encode(`${JSON.stringify(obj)}\n`));
+  (session.stdin as any).write(`${JSON.stringify(obj)}\n`);
+  (session.stdin as any).flush?.();
 }
 
 export async function runPiBridge(extraArgs: string[]) {
@@ -125,7 +126,7 @@ export async function runPiBridge(extraArgs: string[]) {
       stderr: "inherit",
       env: { ...process.env, JOT_CHANNEL: channel, PI_JOT: "0" },
     });
-    const sess: Session = { proc, stdin: proc.stdin.getWriter(), nextId: 1, lastAssistant: "" };
+    const sess: Session = { proc, stdin: proc.stdin, nextId: 1, lastAssistant: "" };
     sessions.set(channel, sess);
 
     (async () => {
