@@ -35,6 +35,8 @@ async function post(path: string, markdown: string) {
 }
 
 export default function (pi: ExtensionAPI) {
+  if (process.env.PI_JOT === "0") return;
+
   let channel = process.env.JOT_CHANNEL || "";
 
   pi.on("session_start", async (_event, ctx) => {
