@@ -249,10 +249,11 @@ function parseSegments(md: string): Segment[] {
 
 function renderMarkdown(md: string): string {
   const dirty = marked.parse(md, { async: false }) as string;
-  return DOMPurify.sanitize(dirty, {
+  const sanitized = DOMPurify.sanitize(dirty, {
     ALLOWED_TAGS: ["a","abbr","b","blockquote","br","code","del","div","em","h1","h2","h3","h4","h5","h6","hr","img","li","ol","p","pre","s","span","strong","table","tbody","td","th","thead","tr","ul"],
     ALLOWED_ATTR: ["href","title","src","alt","align","class"],
   });
+  return sanitized.replace(/<table\b[^>]*>/g, '<div class="table-wrapper"><table>').replace(/<\/table>/g, '</table></div>');
 }
 
 type GateAction = { label: string; value: string; color?: string; [key: string]: unknown };
@@ -496,8 +497,10 @@ export function App() {
     } catch {}
   }, []);
 
-  // emacs keybindings
+  // keyboard shortcuts
   useEffect(() => {
+    let gChordTimer: ReturnType<typeof setTimeout> | null = null;
+    let gPending = false;
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (e.key === "Escape") { setOverlayOpen(null); return; }
@@ -526,6 +529,31 @@ export function App() {
         });
         return best;
       };
+      // vim-style gg / G
+      if (!e.ctrlKey && !e.altKey) {
+        if (e.key === "g" && !e.shiftKey) {
+          e.preventDefault();
+          if (gPending) {
+            gPending = false;
+            if (gChordTimer) clearTimeout(gChordTimer);
+            const list = fragsList();
+            if (list.length > 0) list[0]!.scrollIntoView({ behavior: "smooth", block: "start" });
+          } else {
+            gPending = true;
+            if (gChordTimer) clearTimeout(gChordTimer);
+            gChordTimer = setTimeout(() => { gPending = false; }, 500);
+          }
+          return;
+        }
+        if (e.key === "G" && e.shiftKey) {
+          e.preventDefault();
+          const list = fragsList();
+          if (list.length > 0) {
+            list[list.length - 1]!.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+          return;
+        }
+      }
       if (e.ctrlKey && !e.altKey) {
         if (e.key === "n" || e.key === "p") {
           e.preventDefault();
@@ -558,9 +586,20 @@ export function App() {
           return;
         }
       }
+      if (e.key === "End" && e.ctrlKey) {
+        e.preventDefault();
+        const list = fragsList();
+        if (list.length > 0) {
+          list[list.length - 1]!.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+        return;
+      }
     };
     document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    return () => {
+      document.removeEventListener("keydown", handler);
+      if (gChordTimer) clearTimeout(gChordTimer);
+    };
   }, [fetchChannels]);
 
   const channelButtonRef = useRef<HTMLButtonElement>(null);

@@ -1,10 +1,14 @@
 {
   "name": "jot",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "type": "module",
   "private": true,
+  "keywords": ["pi-package"],
   "bin": {
     "jot": "./src/cli.ts"
+  },
+  "pi": {
+    "extensions": ["./extensions"]
   },
   "scripts": {
     "build": "vite build",

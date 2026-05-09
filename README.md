@@ -43,6 +43,13 @@ echo "## hello" | curl -s --data-binary @- localhost:7878/claude-code/append
 
 Honors `JOT_URL` (default `http://localhost:7878`).
 
+Pi extension package (optional):
+
+```bash
+pi install git:github.com/moeki0/jot@v0.4.3
+# mirrors pi sessions to jot under pi/<cwd>; set JOT_CHANNEL to override
+```
+
 Channels are created on first POST. In-memory only — fragments vanish when the server stops. Each channel keeps the most recent 500 fragments.
 
 Channel paths support slash-separated namespaces, e.g. `cc/abc`. Namespaces can be backed by external suppliers via the registry (see below).

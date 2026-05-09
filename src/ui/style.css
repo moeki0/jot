@@ -242,6 +242,11 @@ li {
   margin: 0.2em 0;
 }
 
+.table-wrapper {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
 table {
   border-collapse: collapse;
   margin: 0.7em 0;

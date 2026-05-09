@@ -38,6 +38,28 @@ function fence(text: string, lang = "") {
   return `${ticks}${lang}\n${text}\n${ticks}`;
 }
 
+function formatUsageFooter(u: any): string {
+  if (!u || typeof u !== "object") return "";
+  const tokens = typeof u.totalTokens === "number" ? u.totalTokens : (typeof u.input === "number" && typeof u.output === "number" ? u.input + u.output : null);
+  const input = typeof u.input === "number" ? u.input : null;
+  const output = typeof u.output === "number" ? u.output : null;
+  const cacheRead = typeof u.cacheRead === "number" && u.cacheRead > 0 ? u.cacheRead : null;
+  const cacheWrite = typeof u.cacheWrite === "number" && u.cacheWrite > 0 ? u.cacheWrite : null;
+  const cost = typeof u.cost?.total === "number" ? u.cost.total : (typeof u.cost === "number" ? u.cost : null);
+  if (tokens == null && cost == null) return "";
+  const parts: string[] = [];
+  if (tokens != null) parts.push(`${tokens.toLocaleString()} tokens`);
+  if (cost != null) parts.push(`$${cost.toFixed(4)}`);
+  const details: string[] = [];
+  if (input != null) details.push(`in ${input.toLocaleString()}`);
+  if (output != null) details.push(`out ${output.toLocaleString()}`);
+  if (cacheRead != null) details.push(`cache read ${cacheRead.toLocaleString()}`);
+  if (cacheWrite != null) details.push(`cache write ${cacheWrite.toLocaleString()}`);
+  if (details.length) parts.push(`(${details.join(" · ")})`);
+  if (!parts.length) return "";
+  return `\n\n---\n_${parts.join(" · ")}_`;
+}
+
 function contentToMarkdown(content: any): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return String(content ?? "");
@@ -96,7 +118,10 @@ export async function runPiBridge(extraArgs: string[]) {
         void ephemeral(channel, "pi-assistant", "");
         const text = contentToMarkdown(ev.message.content).trim();
         sess.lastAssistant = text;
-        if (text) void appendToChannel(channel, `## Assistant\n\n${truncate(text)}`);
+        if (text) {
+          const footer = formatUsageFooter(ev.message.usage);
+          void appendToChannel(channel, `## Assistant\n\n${truncate(text)}${footer}`);
+        }
         return;
       }
       case "tool_execution_start":
